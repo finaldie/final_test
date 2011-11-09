@@ -4,7 +4,7 @@ BIN = test
 SRC = main.cpp \
 	  test.hello.pb.cc
 LIBS = -lpthread \
-	 -lprotobuf
+	   -lprotobuf
 
 all:
-	$(CC) -Wall -g -L$(LIBDIR) -o $(SRC) $(SRC) $(LIBS)
+	$(CC) -Wall -g -L$(LIBDIR) -o $(BIN) $(SRC) $(LIBS)
