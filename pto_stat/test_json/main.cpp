@@ -8,7 +8,7 @@
  *        Version:  1.0
  *        Created:  11/08/2011 08:42:19 AM
  *       Revision:  none
- *       Compiler:  gcc
+ *       Compiler:  g++
  *
  *         Author:  YOUR NAME (), 
  *        Company:  
