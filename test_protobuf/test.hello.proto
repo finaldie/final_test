@@ -1,0 +1,18 @@
+package test;
+message hello
+{
+    required int32 id = 1;
+    required string name = 2;
+}
+
+message MyRequest {
+    required int32 req_id = 1;
+}
+
+message MyResponse {
+    required int32 res_id = 1;
+}
+
+service MyService {
+  rpc Foo(MyRequest) returns(MyResponse);
+}

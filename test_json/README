@@ -1,0 +1,6 @@
+require libs:
+yinst install ports/jsoncpp-0.5.0-4
+yinst install ports/jsoncpp-devel-0.5.0-4
+
+run environment:
+OS: redhat 5.6
