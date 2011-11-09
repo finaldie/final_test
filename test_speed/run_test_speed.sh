@@ -1,8 +1,8 @@
 #!/bin/sh
 
-JSON_DIR = ../test_json/
-PB_DIR = ../test_protobuf/
-RES = result.log
+JSON_DIR='./test_json'
+PB_DIR='./test_protobuf'
+RES='result.log'
 
 if ( [ -f $RES ] ); then
     rm -f $RES
