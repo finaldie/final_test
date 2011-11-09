@@ -74,10 +74,12 @@ int stat_unserialize(string& src, int count)
     my_time t1, t2;
     get_cur_time(&t1);
 
-    bool sucess = fReader.parse(src, decode);
-    if( !sucess ){
-        printf("freader failed\n");
-        exit(1);
+    for( int i=0; i<count; i++ ){
+        bool sucess = fReader.parse(src, decode);
+        if( !sucess ){
+            printf("freader failed\n");
+            exit(1);
+        } 
     } 
 
     get_cur_time(&t2);
