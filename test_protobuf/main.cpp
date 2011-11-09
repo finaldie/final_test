@@ -21,6 +21,7 @@
 #include <string>
 #include <iostream>
 
+#include "test.hello.pb.h"
 using namespace std;
 using namespace test;
 
@@ -38,7 +39,7 @@ main ( int argc, char *argv[] )
     src.set_id(100);
     src.set_name("hyz");
     src.PrintDebugString();
-    if( !src.SerializeToString(res) ){
+    if( !src.SerializeToString(&res) ){
         cout << "PB test failed" << endl;
         exit(1);
     }
