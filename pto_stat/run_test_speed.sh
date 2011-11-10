@@ -17,8 +17,11 @@ echo "CPPFLAGS: -O2" >>$RES
 echo "librarys: jsoncpp-0.5.0.4, google protobuf last stable v2.4" >> $RES
 echo "" >> $RES
 
+echo "statistics start..."
 echo "statistics result" >> $RES
 echo "name      |count     |serialize |unserialize|total     |ser/per   |unser/per |size      |radio" >> $RES
 $JSON_DIR/test $COUNT >> $RES
 $PB_DIR/test $COUNT >> $RES
+
+echo "statistics complete, generate result.log at $PWD"
 rm -f $TMP
