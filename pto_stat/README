@@ -1,0 +1,11 @@
+Before run test, you must ensure the dependent libs install in your machine.
+libs:
+1. ports/jsoncpp-0.5.0-4
+2. ports/jsoncpp-devel-0.5.0-4
+3. google protobuf last stable
+
+After install that, you can run some command as follow:
+1. make
+2. sh run_test_speed.sh
+
+Then will generate a log --> result.log at current folder, that's all & have fun :)
