@@ -38,6 +38,7 @@ static void eg_read(fev_state* fev, fev_buff* evbuff, void* arg)
     int bytes = fevbuff_read(evbuff, read_buf, 100);
     if( bytes > 0 ){
         printf("%s", read_buf);
+        fevbuff_write(evbuff, read_buf, bytes);
         fevbuff_pop(evbuff, bytes);
     }
 }
