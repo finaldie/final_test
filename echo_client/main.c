@@ -35,9 +35,11 @@ static void client_read(fev_state* fev, fev_buff* evbuff, void* arg)
     int bytes = fevbuff_read(evbuff, &n, 4);
     if( bytes == 4 ) {
         recv_num++;
+        for( recv_num % 10000 == 0 ){
+            printf("recv_num = %d\n", recv_num);
+        }
         fevbuff_pop(evbuff, 4);
     }
-    printf("evbuff read bytes = %d\n", bytes);
 }
 
 static void client_error(fev_state* fev, fev_buff* evbuff, void* arg)
@@ -98,9 +100,9 @@ int main ( int argc, char *argv[] )
 
     int i = 0;
     for (; i< 100000; i++) {
-        printf("input enter...\n");
-        char input = 0;
-        while( (input = getchar()) != 10 );
+        //printf("input enter...\n");
+        //char input = 0;
+        //while( (input = getchar()) != 10 );
         net_send_safe(fd, &i, 4);
     }
 
