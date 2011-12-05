@@ -35,7 +35,7 @@ static void client_read(fev_state* fev, fev_buff* evbuff, void* arg)
     int bytes = fevbuff_read(evbuff, &n, 4);
     if( bytes == 4 ) {
         recv_num++;
-        for( recv_num % 10000 == 0 ){
+        if( recv_num % 10000 == 0 ){
             printf("recv_num = %d\n", recv_num);
         }
         fevbuff_pop(evbuff, 4);
