@@ -38,6 +38,7 @@ static void eg_read(fev_state* fev, fev_buff* evbuff, void* arg)
     int bytes = fevbuff_read(evbuff, read_buf, 4);
     if( bytes == 4 ) {
         printf("read data=%d\n", *(int*)read_buf);
+        fevbuff_pop(evbuff, 4);
     }
     else {
         printf("read data len < 4 : %d\n", bytes);
