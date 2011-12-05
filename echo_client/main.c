@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <pthread.h>
 
 #include "fev_buff.h"
 #include "net_core.h"
@@ -88,7 +89,7 @@ int main ( int argc, char *argv[] )
     }
 
     pthread_t tid;
-    int ret = pthread_create(&tid,N ULL, client_recv, &fd);
+    int ret = pthread_create(&tid, NULL, client_recv, &fd);
     if( ret < 0 ){
         printf("create client_recv thread failed\n");
         exit(0);
