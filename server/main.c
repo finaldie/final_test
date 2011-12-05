@@ -54,7 +54,8 @@ static void eg_error(fev_state* fev, fev_buff* evbuff, void* arg)
 static void eg_accept(fev_state* fev, int fd)
 {
     fev_buff* evbuff = fevbuff_new(fev, fd, eg_read, eg_error, NULL);
-    printf("fev_buff created\n");
+    if( evbuff )
+        printf("fev_buff created\n");
 }
 
 int main ( int argc, char *argv[] )
