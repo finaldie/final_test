@@ -1,3 +1,3 @@
-a simple server with fev by final
+a simple server with fev by final(echo server, echoback all the things, which recv from client)
 
 note: for test you can telnet to it :)
