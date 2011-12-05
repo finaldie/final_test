@@ -47,7 +47,7 @@ static void eg_read(fev_state* fev, fev_buff* evbuff, void* arg)
 static void eg_error(fev_state* fev, fev_buff* evbuff, void* arg)
 {
     printf("eg error\n");
-    int fd = fevbuff_destory(evbuff);
+    int fd = fevbuff_destroy(evbuff);
     close(fd);
 }
 
