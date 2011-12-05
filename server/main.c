@@ -65,13 +65,16 @@ int main ( int argc, char *argv[] )
         printf("fev create failed\n");
         exit(1);
     }
+    printf("fev create successful\n");
 
     fev_listen_info* fli = fev_add_listener(fev, 7758, eg_accept);
     if( !fli ) {
-        printf("add listener failedn");
+        printf("add listener failed\n");
         exit(2);
     }
+    printf("add listener successful, bind port is 7758\n");
 
+    printf("fev_poll start\n");
     while(1) {
         fev_poll(fev, 500);
     }   
