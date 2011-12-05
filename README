@@ -1,1 +1,7 @@
 final's personal test code
+
+note: before you compile test project you need do as follow:
+1. git submodule init
+2. git submodule update
+3. cd flibs && make
+4. compile the project, which you interesting :)
