@@ -50,7 +50,6 @@ run_test:
 .PHONY:clean
 clean:
 	rm -f $(DEPS) $(OBJS) $(TARGET)
-	rm -rf $(FLIB_PATH)
 
 help:
 	@echo "The information represents in the program:"
