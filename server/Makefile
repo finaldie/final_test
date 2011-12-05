@@ -40,13 +40,6 @@ $(TARGET):$(OBJS) $(DEPS)
 %.o:%.c 
 	$(CC) $(CFLAGS) $(INC) -c $< 
 
-install:
-	-(test -d $(INSTALL_PATH) || mkdir -p $(INSTALL_PATH) )
-	cp $(TARGET) $(COPY_FILES) $(INSTALL_PATH)
-
-run_test:
-	-(cd $(INSTALL_PATH) && ./$(TARGET) )
-
 .PHONY:clean
 clean:
 	rm -f $(DEPS) $(OBJS) $(TARGET)
