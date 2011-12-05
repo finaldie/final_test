@@ -32,17 +32,12 @@
 
 static void eg_read(fev_state* fev, fev_buff* evbuff, void* arg)
 {
-    char read_buf[20];
-    memset(read_buf, 0, 20);
+    char read_buf[100];
+    memset(read_buf, 0, 100);
 
-    int bytes = fevbuff_read(evbuff, read_buf, 4);
-    if( bytes == 4 ) {
-        printf("read data=%d\n", *(int*)read_buf);
-        fevbuff_pop(evbuff, 4);
-    }
-    else {
-        printf("read data len < 4 : %d\n", bytes);
-    }
+    int bytes = fevbuff_read(evbuff, read_buf, 100);
+    if( bytes > 0 )
+        printf("%s", read_buf);
 }
 
 static void eg_error(fev_state* fev, fev_buff* evbuff, void* arg)
