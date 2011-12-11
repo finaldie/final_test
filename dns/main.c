@@ -63,7 +63,7 @@ int main ( int argc, char *argv[] )
     }
     printf("fev create successful\n");
 
-    int ret = fev_add_event(fev, fd, FREAD, on_dns, NULL, NULL);
+    int ret = fev_reg_event(fev, fd, FEV_READ, on_dns, NULL, NULL);
     if( ret ) {
         printf("add event failed\n");
         exit(0);
