@@ -49,7 +49,7 @@ void do_test(int num, int thread_num, FLOG_MODE mode)
     }
 
     get_cur_time(&end_time);
-    int diff_usec = get_diff_time(&start, &end);
+    int diff_usec = get_diff_time(&start_time, &end_time);
     printf("pid=%d, tid=%lu, call interface time cost (usec):%d\n", getpid(), pthread_self(), diff_usec);
 }
 
