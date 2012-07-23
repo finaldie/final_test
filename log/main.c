@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include "log_inc.h"
+#include "tu_inc.h"
 
 static flogger* log_handler = NULL;
 
@@ -12,9 +13,16 @@ void* write_log(void* arg)
     printf("writing thread id = %lu startup\n", pthread_self());
     int num = *((int*)arg);
 
-    for ( int i = 0; i < num; i++ ) {
+    my_time start, end;
+    get_cur_time(&start);
+    int i = 0;
+    for ( i = 0; i < num; i++ ) {
         FLOG_DEBUG(log_handler, "debug log test");
     }
+    get_cur_time(&end);
+
+    int diff_usec = get_diff_time(&start, &end);
+    printf("tid=%lu, time cost (usec):%d\n", pthread_self(), diff_usec);
 
     return NULL;
 }
@@ -28,11 +36,12 @@ void do_test(int num, int thread_num, FLOG_MODE mode)
 
     int end = num / thread_num;
     pthread_t tid[thread_num];
-    for ( int i = 0; i < thread_num; i++ ) {
+    int i = 0;
+    for ( i = 0; i < thread_num; i++ ) {
         pthread_create(&tid[i], NULL, write_log, (void*)&end);
     }
 
-    for ( int i = 0; i < thread_num; i++ ) {
+    for ( i = 0; i < thread_num; i++ ) {
         pthread_join(tid[i], NULL);
     }
 }
@@ -110,7 +119,7 @@ int main(int argc, char** argv)
     // default thread num = 2
     int thread_num = 2;
     // get thread num
-    if ( argc == 3 ) {
+    if ( argc >= 3 ) {
         thread_num = atoi(argv[2]);
         if ( thread_num <= 0 ) {
             printf("wrong number of thread_num, must > 0\n");

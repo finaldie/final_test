@@ -10,6 +10,8 @@ CC = gcc
 INC = -I$(FLIB_PATH)/$(INCLUDE_PATH)
 LL = -L$(FLIB_PATH)/$(LIBS_PATH)
 LIBS = -lpthread \
+	   -lftu \
+	   -lflist \
 	   -lflog \
 	   -lfmbuf \
 	   -lfhash
@@ -21,7 +23,7 @@ COPY_FILES =
 DEPS = $(patsubst %.c,%.d,$(SRCS))
 OBJS = $(patsubst %.c,%.o,$(SRCS))
 
-CFLAGS = -Wall -Werror -g -O2 -std=c99
+CFLAGS = -Wall -Werror -g -O2
 
 all:$(TARGET)
 $(TARGET):$(OBJS) $(DEPS)
