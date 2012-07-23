@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include <pthread.h>
 #include "log_inc.h"
@@ -22,7 +23,7 @@ void* write_log(void* arg)
     get_cur_time(&end);
 
     int diff_usec = get_diff_time(&start, &end);
-    printf("tid=%lu, time cost (usec):%d\n", pthread_self(), diff_usec);
+    printf("tid=%lu, call interface time cost (usec):%d\n", pthread_self(), diff_usec);
 
     return NULL;
 }
@@ -34,6 +35,8 @@ void do_test(int num, int thread_num, FLOG_MODE mode)
     flog_set_flush_interval(2);
     flog_set_level(LOG_LEVEL_DEBUG);
 
+    my_time start_time, end_time;
+    get_cur_time(&start_time);
     int end = num / thread_num;
     pthread_t tid[thread_num];
     int i = 0;
@@ -44,6 +47,10 @@ void do_test(int num, int thread_num, FLOG_MODE mode)
     for ( i = 0; i < thread_num; i++ ) {
         pthread_join(tid[i], NULL);
     }
+
+    get_cur_time(&end_time);
+    int diff_usec = get_diff_time(&start, &end);
+    printf("pid=%d, tid=%lu, call interface time cost (usec):%d\n", getpid(), pthread_self(), diff_usec);
 }
 
 static
