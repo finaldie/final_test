@@ -6,7 +6,7 @@
 #include "log_inc.h"
 #include "tu_inc.h"
 
-static flogger* log_handler = NULL;
+static log_file_t* log_handler = NULL;
 
 static
 void* write_log(void* arg)
