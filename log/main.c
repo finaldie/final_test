@@ -6,7 +6,10 @@
 #include "log_inc.h"
 #include "tu_inc.h"
 
-#define MAX_LOG_SIZE 200
+// you need change the two marcos as below
+#define MAX_LOG_SIZE             200
+#define MAX_BUFF_SIZE_PER_THREAD (1024 * 1024 * 40)
+
 static log_file_t* log_handler = NULL;
 static char log_str[MAX_LOG_SIZE];
 static int buff_full_count = 0;
@@ -51,7 +54,7 @@ void do_test(int num, int thread_num)
     flog_set_mode(log_mode);
     flog_set_flush_interval(2);
     flog_set_level(LOG_LEVEL_DEBUG);
-    flog_set_buffer_size(1024 * 1024 * 40);
+    flog_set_buffer_size(MAX_BUFF_SIZE_PER_THREAD);
     if ( log_mode == LOG_ASYNC_MODE ) {
         printf("current buffer size per-thread = %lu\n", flog_get_buffer_size());
     }
