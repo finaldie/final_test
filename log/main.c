@@ -6,15 +6,20 @@
 #include "log_inc.h"
 #include "tu_inc.h"
 
+#define MAX_LOG_SIZE 200
 static log_file_t* log_handler = NULL;
-static char log_str[1024];
+static char log_str[MAX_LOG_SIZE];
 static int buff_full_count = 0;
+static LOG_MODE log_mode;
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 void get_log_event(LOG_EVENT event)
 {
     //printf("get_log_event(tid=%lu): event_id=%d\n", pthread_self(), event);
     if ( event == LOG_EVENT_BUFF_FULL ) {
+        pthread_mutex_lock(&lock);
         buff_full_count++;
+        pthread_mutex_unlock(&lock);
     }
 }
 
@@ -29,27 +34,30 @@ void* write_log(void* arg)
     int i = 0;
     for ( i = 0; i < num; i++ ) {
         FLOG_DEBUG(log_handler, log_str);
+        //if ( (log_mode == LOG_ASYNC_MODE) && (i % 450 == 0) ) usleep(1);
     }
     get_cur_time(&end);
 
     int diff_usec = get_diff_time(&start, &end);
-    printf("tid=%lu, call interface time cost (usec):%d\n", pthread_self(), diff_usec);
+    printf("tid=%lu, call interface time cost (usec):%d, writen msg:%d, final:%f count/s\n", 
+            pthread_self(), diff_usec, num, (double)num / ((double)diff_usec / 1000000));
 
     return NULL;
 }
 
 static
-void do_test(int num, int thread_num, LOG_MODE mode)
+void do_test(int num, int thread_num)
 {
-    flog_set_mode(mode);
+    flog_set_mode(log_mode);
     flog_set_flush_interval(2);
     flog_set_level(LOG_LEVEL_DEBUG);
-    flog_set_buffer_size(1024 * 1024 * 100);
-    if ( mode == LOG_ASYNC_MODE ) {
+    flog_set_buffer_size(1024 * 1024 * 40);
+    if ( log_mode == LOG_ASYNC_MODE ) {
         printf("current buffer size per-thread = %lu\n", flog_get_buffer_size());
     }
     flog_register_event_callback(get_log_event);
     buff_full_count = 0;
+    sleep(1);
 
     my_time start_time, end_time;
     get_cur_time(&start_time);
@@ -66,7 +74,8 @@ void do_test(int num, int thread_num, LOG_MODE mode)
 
     get_cur_time(&end_time);
     int diff_usec = get_diff_time(&start_time, &end_time);
-    printf("pid=%d, tid=%lu, call interface time cost (usec):%d miss_msg=%d\n", getpid(), pthread_self(), diff_usec, buff_full_count);
+    printf("pid=%d, tid=%lu, call interface time cost (usec):%d write_msg:%d miss_msg:%d miss_rate:%f final:%f count/s\n",
+            getpid(), pthread_self(), diff_usec, num, buff_full_count, (double)buff_full_count/(double)num, (double)num/((double)diff_usec/1000000));
 }
 
 static
@@ -74,7 +83,8 @@ void test_single_sync(int num)
 {
     log_handler = flog_create("sync_single_thread");
     printf("[SYNC]start single testing...\n");
-    do_test(num, 1, LOG_SYNC_MODE);
+    log_mode = LOG_SYNC_MODE;
+    do_test(num, 1);
     sleep(2);
     printf("[SYNC]end single testing\n\n");
 }
@@ -84,7 +94,8 @@ void test_multi_sync(int num, int thread_num)
 {
     log_handler = flog_create("sync_multithread");
     printf("[SYNC]start multip testing ( totally, we start %d threads for testing)...\n", thread_num);
-    do_test(num, thread_num, LOG_SYNC_MODE);
+    log_mode = LOG_SYNC_MODE;
+    do_test(num, thread_num);
     sleep(4);
     printf("[SYNC]end multip testing\n\n");
 }
@@ -94,7 +105,8 @@ void test_single_async(int num)
 {
     log_handler = flog_create("async_single_thread");
     printf("[ASYNC]start single testing...\n");
-    do_test(num, 1, LOG_ASYNC_MODE);
+    log_mode = LOG_ASYNC_MODE;
+    do_test(num, 1);
     sleep(2);
     printf("[ASYNC]end single testing\n\n");
 }
@@ -104,7 +116,8 @@ void test_multi_async(int num, int thread_num)
 {
     log_handler = flog_create("async_multithread");
     printf("[ASYNC]start multip testing ( totally, we start %d threads for testing)...\n", thread_num);
-    do_test(num, thread_num, LOG_ASYNC_MODE);
+    log_mode = LOG_ASYNC_MODE;
+    do_test(num, thread_num);
     sleep(6);
     printf("[ASYNC]end multip testing\n\n");
 }
@@ -164,8 +177,8 @@ int main(int argc, char** argv)
         }
     }
 
-    memset(log_str, 0, 1024);
-    memset(log_str, 97, 1023);
+    memset(log_str, 0, MAX_LOG_SIZE);
+    memset(log_str, 97, MAX_LOG_SIZE-1);
     printf("startup mode = %d ..\n", mode);
     switch ( mode ) {
         case 0:
