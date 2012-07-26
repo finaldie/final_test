@@ -7,6 +7,16 @@
 #include "tu_inc.h"
 
 static log_file_t* log_handler = NULL;
+static char log_str[1024];
+static int buff_full_count = 0;
+
+void get_log_event(LOG_EVENT event)
+{
+    //printf("get_log_event(tid=%lu): event_id=%d\n", pthread_self(), event);
+    if ( event == LOG_EVENT_BUFF_FULL ) {
+        buff_full_count++;
+    }
+}
 
 static
 void* write_log(void* arg)
@@ -18,7 +28,7 @@ void* write_log(void* arg)
     get_cur_time(&start);
     int i = 0;
     for ( i = 0; i < num; i++ ) {
-        FLOG_DEBUG(log_handler, "debug log test");
+        FLOG_DEBUG(log_handler, log_str);
     }
     get_cur_time(&end);
 
@@ -29,11 +39,17 @@ void* write_log(void* arg)
 }
 
 static
-void do_test(int num, int thread_num, FLOG_MODE mode)
+void do_test(int num, int thread_num, LOG_MODE mode)
 {
     flog_set_mode(mode);
     flog_set_flush_interval(2);
     flog_set_level(LOG_LEVEL_DEBUG);
+    flog_set_buffer_size(1024 * 1024 * 100);
+    if ( mode == LOG_ASYNC_MODE ) {
+        printf("current buffer size per-thread = %lu\n", flog_get_buffer_size());
+    }
+    flog_register_event_callback(get_log_event);
+    buff_full_count = 0;
 
     my_time start_time, end_time;
     get_cur_time(&start_time);
@@ -50,7 +66,7 @@ void do_test(int num, int thread_num, FLOG_MODE mode)
 
     get_cur_time(&end_time);
     int diff_usec = get_diff_time(&start_time, &end_time);
-    printf("pid=%d, tid=%lu, call interface time cost (usec):%d\n", getpid(), pthread_self(), diff_usec);
+    printf("pid=%d, tid=%lu, call interface time cost (usec):%d miss_msg=%d\n", getpid(), pthread_self(), diff_usec, buff_full_count);
 }
 
 static
@@ -58,7 +74,7 @@ void test_single_sync(int num)
 {
     log_handler = flog_create("sync_single_thread");
     printf("[SYNC]start single testing...\n");
-    do_test(num, 1, FLOG_SYNC_MODE);
+    do_test(num, 1, LOG_SYNC_MODE);
     sleep(2);
     printf("[SYNC]end single testing\n\n");
 }
@@ -68,7 +84,7 @@ void test_multi_sync(int num, int thread_num)
 {
     log_handler = flog_create("sync_multithread");
     printf("[SYNC]start multip testing ( totally, we start %d threads for testing)...\n", thread_num);
-    do_test(num, thread_num, FLOG_SYNC_MODE);
+    do_test(num, thread_num, LOG_SYNC_MODE);
     sleep(4);
     printf("[SYNC]end multip testing\n\n");
 }
@@ -78,7 +94,7 @@ void test_single_async(int num)
 {
     log_handler = flog_create("async_single_thread");
     printf("[ASYNC]start single testing...\n");
-    do_test(num, 1, FLOG_ASYNC_MODE);
+    do_test(num, 1, LOG_ASYNC_MODE);
     sleep(2);
     printf("[ASYNC]end single testing\n\n");
 }
@@ -88,7 +104,7 @@ void test_multi_async(int num, int thread_num)
 {
     log_handler = flog_create("async_multithread");
     printf("[ASYNC]start multip testing ( totally, we start %d threads for testing)...\n", thread_num);
-    do_test(num, thread_num, FLOG_ASYNC_MODE);
+    do_test(num, thread_num, LOG_ASYNC_MODE);
     sleep(6);
     printf("[ASYNC]end multip testing\n\n");
 }
@@ -148,6 +164,8 @@ int main(int argc, char** argv)
         }
     }
 
+    memset(log_str, 0, 1024);
+    memset(log_str, 97, 1023);
     printf("startup mode = %d ..\n", mode);
     switch ( mode ) {
         case 0:
