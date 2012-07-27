@@ -7,8 +7,8 @@
 #include "tu_inc.h"
 
 // you need change the two marcos as below
-#define MAX_LOG_SIZE             200
-#define MAX_BUFF_SIZE_PER_THREAD (1024 * 1024 * 40)
+#define MAX_LOG_SIZE             500
+#define MAX_BUFF_SIZE_PER_THREAD (1024 * 1024 * 50)
 
 static log_file_t* log_handler = NULL;
 static char log_str[MAX_LOG_SIZE];
@@ -18,11 +18,14 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 void get_log_event(LOG_EVENT event)
 {
-    //printf("get_log_event(tid=%lu): event_id=%d\n", pthread_self(), event);
     if ( event == LOG_EVENT_BUFF_FULL ) {
         pthread_mutex_lock(&lock);
         buff_full_count++;
         pthread_mutex_unlock(&lock);
+    }
+
+    if ( event == LOG_EVENT_USER_BUFFER_RELEASED ) {
+        printf("get_log_event(tid=%lu): event_id=%d\n", pthread_self(), event);
     }
 }
 
@@ -37,6 +40,7 @@ void* write_log(void* arg)
     int i = 0;
     for ( i = 0; i < num; i++ ) {
         FLOG_DEBUG(log_handler, log_str);
+        //log_file_write(log_handler, NULL, 0, log_str, MAX_LOG_SIZE - 1);
         //if ( (log_mode == LOG_ASYNC_MODE) && (i % 450 == 0) ) usleep(1);
     }
     get_cur_time(&end);
@@ -45,7 +49,7 @@ void* write_log(void* arg)
     printf("tid=%lu, call interface time cost (usec):%d, writen msg:%d, final:%f count/s\n", 
             pthread_self(), diff_usec, num, (double)num / ((double)diff_usec / 1000000));
 
-    return NULL;
+    pthread_exit(NULL);
 }
 
 static
@@ -125,6 +129,37 @@ void test_multi_async(int num, int thread_num)
     printf("[ASYNC]end multip testing\n\n");
 }
 
+size_t critical_test()
+{
+    char log[MAX_LOG_SIZE];
+    memset(log, 0, MAX_LOG_SIZE);
+    memset(log, 97, MAX_LOG_SIZE - 1);
+    log[MAX_LOG_SIZE-2] = '\n';
+    FILE* f = fopen("crit_test.log", "a");
+    if ( !f ) {
+        printf("cannot create/open crit_test.log for testing\n");
+        exit(1);
+    }
+
+    my_time start_time, end_time;
+    get_cur_time(&start_time);
+
+    int i = 0;
+    int msg_count = 20000000;
+    for ( i = 0; i < msg_count; ++i ) {
+        fwrite_unlocked(log, 1, MAX_LOG_SIZE-1, f);
+    }
+
+    get_cur_time(&end_time);
+    int diff_usec = get_diff_time(&start_time, &end_time);
+    fclose(f);
+
+    printf("total cost (usec):%d, total msg:%d count, per-msg_size:%d bytes\n",
+            diff_usec, msg_count, MAX_LOG_SIZE);
+    double max = (double)msg_count / ((double)diff_usec/(double)1000000 );
+    return (size_t)max;
+}
+
 // cmd: ./test 100000 3
 // note: first param - count of log msg
 //       second param - how many threads we start
@@ -182,6 +217,11 @@ int main(int argc, char** argv)
 
     memset(log_str, 0, MAX_LOG_SIZE);
     memset(log_str, 97, MAX_LOG_SIZE-1);
+
+    //printf("start critical test...\n");
+    //size_t max = critical_test();
+    //printf("start critical test...end, the max writing ability is: %lu count/s\n", max);
+
     printf("startup mode = %d ..\n", mode);
     switch ( mode ) {
         case 0:
