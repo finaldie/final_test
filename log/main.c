@@ -36,7 +36,7 @@ void* write_log(void* arg)
     int num = *((int*)arg);
     int last_miss_count = buff_full_count;
     // divide total msg into some groups
-    int max_num_per_group = 1000;
+    int max_num_per_group = 5000;
     int group = num / max_num_per_group;
     int sleep_step = max_num_per_group;
     printf("tid=%lu, max_num_per_group:%d, group:%d, last_miss_count:%d, sleep_step:%d\n",
@@ -50,11 +50,13 @@ void* write_log(void* arg)
             last_miss_count = buff_full_count;
         }
 
-        for ( j = 0; j < max_num_per_group; ++j ) {
+        int step = 0;
+        for ( j = 0; j < max_num_per_group; ++j, ++step ) {
             FLOG_DEBUG(log_handler, log_str);
             //log_file_write(log_handler, NULL, 0, log_str, MAX_LOG_SIZE - 1);
 
-            if ( log_mode == LOG_ASYNC_MODE && (i % sleep_step == 0) ) {
+            if ( log_mode == LOG_ASYNC_MODE && (step == sleep_step) ) {
+                step = 0;
                 usleep(1);
             }
         }
