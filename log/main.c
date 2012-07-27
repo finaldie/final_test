@@ -13,7 +13,6 @@
 static log_file_t* log_handler = NULL;
 static char log_str[MAX_LOG_SIZE];
 static int buff_full_count = 0;
-static int max_qps = 1000000; // default qps
 static LOG_MODE log_mode;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -35,21 +34,20 @@ void* write_log(void* arg)
 {
     printf("writing thread id = %lu startup\n", pthread_self());
     int num = *((int*)arg);
-    // calculate the max time of per call interface, unit ns ( 1s = 1000,000,000 ns )
-    int base_per_call_time = 1000000000 / max_qps;
+    int last_miss_count = buff_full_count;
     // divide total msg into some groups
     int max_num_per_group = 1000;
     int group = num / max_num_per_group;
     int sleep_step = max_num_per_group;
-    printf("tid=%lu, max_num_per_group:%d, group:%d, base_per_call:%d ns, sleep_step:%d\n",
-            pthread_self(), max_num_per_group, group, base_per_call_time, sleep_step);
+    printf("tid=%lu, max_num_per_group:%d, group:%d, last_miss_count:%d, sleep_step:%d\n",
+            pthread_self(), max_num_per_group, group, last_miss_count, sleep_step);
 
-    my_time start, end, group_start, group_end;
+    my_time start, end;
     get_cur_time(&start);
     int i = 0, j = 0;
     for ( i = 0; i < group; i++ ) {
         if ( log_mode == LOG_ASYNC_MODE ) {
-            get_cur_time(&group_start);
+            last_miss_count = buff_full_count;
         }
 
         for ( j = 0; j < max_num_per_group; ++j ) {
@@ -62,22 +60,21 @@ void* write_log(void* arg)
         }
 
         if ( log_mode == LOG_ASYNC_MODE ) {
-            get_cur_time(&group_end);
-            int diff_usec = get_diff_time(&group_start, &group_end);
-            int per_call = (int)((double)(1000 * diff_usec) / max_num_per_group);
+            int current_miss_count = buff_full_count;
+            int diff = current_miss_count - last_miss_count;
 
-            if ( per_call < base_per_call_time ) {
+            if ( diff > 0 ) {
                 sleep_step /= 2;
                 if ( sleep_step == 0 ) sleep_step = 1;
-            }
-
-            if ( per_call > base_per_call_time ) {
+            } else {
                 sleep_step += 50;
                 if ( sleep_step > max_num_per_group ) sleep_step = max_num_per_group;
             }
 
-            printf("tid=%lu, group_id:%d, per_call:%d ns, sleep_step:%d\n",
-                    pthread_self(), i, per_call, sleep_step);
+            if ( diff ) {
+                printf("tid=%lu, group_id:%d, last_miss_count:%d, diff:%d, sleep_step:%d\n",
+                        pthread_self(), i, last_miss_count, diff, sleep_step);
+            }
         }
     }
 
