@@ -8,11 +8,12 @@
 
 // you need change the two marcos as below
 #define MAX_LOG_SIZE             500
-#define MAX_BUFF_SIZE_PER_THREAD (1024 * 1024 * 50)
+#define MAX_BUFF_SIZE_PER_THREAD (1024 * 1024 * 200)
 
 static log_file_t* log_handler = NULL;
 static char log_str[MAX_LOG_SIZE];
 static int buff_full_count = 0;
+static int max_qps = 1000000; // default qps
 static LOG_MODE log_mode;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -34,17 +35,53 @@ void* write_log(void* arg)
 {
     printf("writing thread id = %lu startup\n", pthread_self());
     int num = *((int*)arg);
+    // calculate the max time of per call interface, unit ns ( 1s = 1000,000,000 ns )
+    int base_per_call_time = 1000000000 / max_qps;
+    // divide total msg into some groups
+    int max_num_per_group = 1000;
+    int group = num / max_num_per_group;
+    int sleep_step = max_num_per_group;
+    printf("tid=%lu, max_num_per_group:%d, group:%d, base_per_call:%d ns, sleep_step:%d\n",
+            pthread_self(), max_num_per_group, group, base_per_call_time, sleep_step);
 
-    my_time start, end;
+    my_time start, end, group_start, group_end;
     get_cur_time(&start);
-    int i = 0;
-    for ( i = 0; i < num; i++ ) {
-        FLOG_DEBUG(log_handler, log_str);
-        //log_file_write(log_handler, NULL, 0, log_str, MAX_LOG_SIZE - 1);
-        //if ( (log_mode == LOG_ASYNC_MODE) && (i % 450 == 0) ) usleep(1);
-    }
-    get_cur_time(&end);
+    int i = 0, j = 0;
+    for ( i = 0; i < group; i++ ) {
+        if ( log_mode == LOG_ASYNC_MODE ) {
+            get_cur_time(&group_start);
+        }
 
+        for ( j = 0; j < max_num_per_group; ++j ) {
+            FLOG_DEBUG(log_handler, log_str);
+            //log_file_write(log_handler, NULL, 0, log_str, MAX_LOG_SIZE - 1);
+
+            if ( log_mode == LOG_ASYNC_MODE && (i % sleep_step == 0) ) {
+                usleep(1);
+            }
+        }
+
+        if ( log_mode == LOG_ASYNC_MODE ) {
+            get_cur_time(&group_end);
+            int diff_usec = get_diff_time(&group_start, &group_end);
+            int per_call = (int)((double)(1000 * diff_usec) / max_num_per_group);
+
+            if ( per_call < base_per_call_time ) {
+                sleep_step /= 2;
+                if ( sleep_step == 0 ) sleep_step = 1;
+            }
+
+            if ( per_call > base_per_call_time ) {
+                sleep_step += 50;
+                if ( sleep_step > max_num_per_group ) sleep_step = max_num_per_group;
+            }
+
+            printf("tid=%lu, group_id:%d, per_call:%d ns, sleep_step:%d\n",
+                    pthread_self(), i, per_call, sleep_step);
+        }
+    }
+
+    get_cur_time(&end);
     int diff_usec = get_diff_time(&start, &end);
     printf("tid=%lu, call interface time cost (usec):%d, writen msg:%d, final:%f count/s\n", 
             pthread_self(), diff_usec, num, (double)num / ((double)diff_usec / 1000000));
