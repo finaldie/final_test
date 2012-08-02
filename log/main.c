@@ -69,7 +69,7 @@ void* write_log(void* arg)
                 sleep_step /= 2;
                 if ( sleep_step == 0 ) sleep_step = 1;
             } else {
-                sleep_step += 50;
+                sleep_step += 250;
                 if ( sleep_step > max_num_per_group ) sleep_step = max_num_per_group;
             }
 
