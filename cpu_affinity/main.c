@@ -109,7 +109,7 @@ int do_cpu_stress(int numthreads)
     }
 
     /*  NOTE: All threads execute code from here down! */
-    if ( !set_cpu_mask(created_thread) ) {
+    if ( set_cpu_mask(created_thread) ) {
         printf("set cpu mask failed, cpu index = %d\n", created_thread);
         exit(1);
     }
