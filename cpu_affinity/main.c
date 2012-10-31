@@ -15,6 +15,8 @@
  * =====================================================================================
  */
 
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -62,12 +64,10 @@ int do_thread_task()
     cpu_set_t mycpuid;
     sched_getaffinity(0, sizeof(mycpuid), &mycpuid);
     if ( check_cpu_expensive_op(computation_res) ) {
-        printf("SUCCESS: Thread completed, and PASSED integrity check!\n",
-                mycpuid);
+        printf("SUCCESS: Thread completed, and PASSED integrity check!\n");
         ret = 1;
     } else {
-        printf("FAILURE: Thread failed integrity check!\n",
-                mycpuid);
+        printf("FAILURE: Thread failed integrity check!\n");
         ret = 0;
     }
 
@@ -80,11 +80,14 @@ int set_cpu_mask(int cpu_index)
     /*  CPU_ZERO initializes all the bits in the mask to zero. */
     CPU_ZERO( &mask );
     /*  CPU_SET sets only the bit corresponding to cpu. */
-    CPU_SET( created_thread, &mask );
+    CPU_SET( cpu_index, &mask );
     /*  sched_setaffinity returns 0 in success */
     if( sched_setaffinity( 0, sizeof(mask), &mask ) == -1 ) {
         printf("WARNING: Could not set CPU Affinity, continuing...\n");
+        return 1;
     }
+
+    return 0;
 }
 
 /*  This method will create threads, then bind each to its own cpu. */
@@ -106,7 +109,11 @@ int do_cpu_stress(int numthreads)
     }
 
     /*  NOTE: All threads execute code from here down! */
-    set_cpu_mask(created_thread);
+    if ( !set_cpu_mask(created_thread) ) {
+        printf("set cpu mask failed, cpu index = %d\n", created_thread);
+        exit(1);
+    }
+
     ret = do_thread_task();
 
     return ret;
