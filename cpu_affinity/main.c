@@ -24,8 +24,8 @@
 #include <unistd.h>
 #include <stdint.h>
 
-#define ARRAY_SIZE (1024 * 1024)
 
+static int ARRAY_SIZE = 0;
 static int* nums_array = NULL;
 
 void init_nums_array()
@@ -127,6 +127,19 @@ int do_cpu_stress(int numthreads)
  */
 int main ( int argc, char *argv[] )
 {
+    if ( argc != 2 ) {
+        printf("usage : ./binary array_size\n");
+        printf(" `- example: ./test 1000000\n");
+        exit(0);
+    }
+
+    int size = atoi(argv[1]);
+    if ( size < 1 ) {
+        printf("array_size must > 0\n");
+        exit(0);
+    }
+
+    ARRAY_SIZE = size;
     init_nums_array();
     int NUM_PROCS = sysconf(_SC_NPROCESSORS_CONF);
     int ret = do_cpu_stress(NUM_PROCS);
