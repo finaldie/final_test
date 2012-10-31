@@ -39,15 +39,19 @@ void init_nums_array()
         exit(1);
     }
 
-    memset(nums_array, 1, ARRAY_SIZE * sizeof(int));
+    int i;
+    for (i=1; i <= ARRAY_SIZE; i++) {
+        nums_array[i] = i;
+    }
 }
 
 int do_cpu_expensive_op(int loop) {
-    int res = 0;
+    int res = 1;
     int i = 0, j = 0;
     for ( ; i < loop; i++ ) {
         for (j=0; j<ARRAY_SIZE; j++) {
-            res *= nums_array[j];
+            res += nums_array[j];
+            res /= 2;
         }
     }
 
