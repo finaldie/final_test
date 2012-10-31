@@ -26,6 +26,7 @@
 
 
 static int ARRAY_SIZE = 0;
+static int IS_SET = 0;
 static int* nums_array = NULL;
 
 void init_nums_array()
@@ -60,7 +61,7 @@ int do_thread_task()
 {
     int ret = 1;
     /*  Now we have a single thread bound to each cpu on the system */
-    int computation_res = do_cpu_expensive_op(41);
+    int computation_res = do_cpu_expensive_op(1000);
     cpu_set_t mycpuid;
     sched_getaffinity(0, sizeof(mycpuid), &mycpuid);
     if ( check_cpu_expensive_op(computation_res) ) {
@@ -109,9 +110,11 @@ int do_cpu_stress(int numthreads)
     }
 
     /*  NOTE: All threads execute code from here down! */
-    if ( set_cpu_mask(created_thread) ) {
-        printf("set cpu mask failed, cpu index = %d\n", created_thread);
-        exit(1);
+    if ( IS_SET ) {
+        if ( set_cpu_mask(created_thread) ) {
+            printf("set cpu mask failed, cpu index = %d\n", created_thread);
+            exit(1);
+        }
     }
 
     ret = do_thread_task();
@@ -127,9 +130,10 @@ int do_cpu_stress(int numthreads)
  */
 int main ( int argc, char *argv[] )
 {
-    if ( argc != 2 ) {
-        printf("usage : ./binary array_size\n");
+    if ( argc < 2 ) {
+        printf("usage : ./binary array_size [is_set_mask:0]\n");
         printf(" `- example: ./test 1000000\n");
+        printf(" `- example: ./test 1000000 1\n");
         exit(0);
     }
 
@@ -138,6 +142,13 @@ int main ( int argc, char *argv[] )
         printf("array_size must > 0\n");
         exit(0);
     }
+
+    if ( arg == 3 ) {
+        int is_set = atoi(argv[2]);
+        if ( is_set ) IS_SET = 1;
+    }
+
+    printf("The array_size=[%d], is_set_mask=[%d]\n", ARRAY_SIZE, IS_SET);
 
     ARRAY_SIZE = size;
     init_nums_array();
