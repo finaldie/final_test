@@ -15,15 +15,20 @@
  * =====================================================================================
  */
 
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sched.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <pthread.h>
 
-#define ARRAY_SIZE (1024 * 1024)
 
+static int ARRAY_SIZE = 0;
+static int IS_SET = 0;
+static int CPU_CORES = 0;
 static int* nums_array = NULL;
 
 void init_nums_array()
@@ -34,15 +39,19 @@ void init_nums_array()
         exit(1);
     }
 
-    memset(nums_array, 1, ARRAY_SIZE * sizeof(int));
+    int i;
+    for (i=1; i <= ARRAY_SIZE; i++) {
+        nums_array[i] = i;
+    }
 }
 
 int do_cpu_expensive_op(int loop) {
-    int res = 0;
+    int res = 1;
     int i = 0, j = 0;
     for ( ; i < loop; i++ ) {
         for (j=0; j<ARRAY_SIZE; j++) {
-            res *= nums_array[j];
+            res += nums_array[j];
+            res /= 2;
         }
     }
 
@@ -58,16 +67,14 @@ int do_thread_task()
 {
     int ret = 1;
     /*  Now we have a single thread bound to each cpu on the system */
-    int computation_res = do_cpu_expensive_op(41);
+    int computation_res = do_cpu_expensive_op(1000);
     cpu_set_t mycpuid;
     sched_getaffinity(0, sizeof(mycpuid), &mycpuid);
     if ( check_cpu_expensive_op(computation_res) ) {
-        printf("SUCCESS: Thread completed, and PASSED integrity check!\n",
-                mycpuid);
+        printf("SUCCESS: Thread completed, and PASSED integrity check!\n");
         ret = 1;
     } else {
-        printf("FAILURE: Thread failed integrity check!\n",
-                mycpuid);
+        printf("FAILURE: Thread failed integrity check!\n");
         ret = 0;
     }
 
@@ -80,11 +87,31 @@ int set_cpu_mask(int cpu_index)
     /*  CPU_ZERO initializes all the bits in the mask to zero. */
     CPU_ZERO( &mask );
     /*  CPU_SET sets only the bit corresponding to cpu. */
-    CPU_SET( created_thread, &mask );
+    CPU_SET( cpu_index, &mask );
     /*  sched_setaffinity returns 0 in success */
     if( sched_setaffinity( 0, sizeof(mask), &mask ) == -1 ) {
         printf("WARNING: Could not set CPU Affinity, continuing...\n");
+        return 1;
     }
+
+    return 0;
+}
+
+int set_cpu_mask_forthread(int cpu_index)
+{
+    cpu_set_t mask;
+    /*  CPU_ZERO initializes all the bits in the mask to zero. */
+    CPU_ZERO( &mask );
+    /*  CPU_SET sets only the bit corresponding to cpu. */
+    CPU_SET( cpu_index % CPU_CORES, &mask );
+    /*  sched_setaffinity returns 0 in success */
+    if( pthread_setaffinity_np( pthread_self(), sizeof(mask), &mask ) == -1 ) {
+        printf("WARNING: Could not set CPU Affinity, continuing...\n");
+        return 1;
+    }
+
+    return 0;
+
 }
 
 /*  This method will create threads, then bind each to its own cpu. */
@@ -106,10 +133,48 @@ int do_cpu_stress(int numthreads)
     }
 
     /*  NOTE: All threads execute code from here down! */
-    set_cpu_mask(created_thread);
+    if ( IS_SET ) {
+        if ( set_cpu_mask(created_thread) ) {
+            printf("set cpu mask failed, cpu index = %d\n", created_thread);
+            exit(1);
+        }
+    }
+
     ret = do_thread_task();
 
     return ret;
+}
+
+void* _do_thread_task(void* arg)
+{
+    int thread_index = *(int*)arg;
+    if ( IS_SET ) {
+        if ( set_cpu_mask_forthread(thread_index) ) {
+            printf("set cpu mask failed, cpu index = %d\n", thread_index);
+            exit(1);
+        }
+    }
+
+    do_thread_task();
+    return NULL;
+}
+
+int do_cpu_thread_stress(int numthreads)
+{
+    pthread_t tids[numthreads];
+    int indexs[numthreads];
+    int i = 0;
+    for ( i=0 ; i < numthreads; i++ ) {
+        indexs[i] = i;
+        pthread_create(&tids[i], NULL, _do_thread_task, &indexs[i]);
+    }
+
+    for ( i=0; i < numthreads; i++ ) {
+        pthread_join(tids[i], NULL);
+    }
+
+    printf("stress test finished\n");
+    return 1;
 }
 
 /* 
@@ -120,9 +185,34 @@ int do_cpu_stress(int numthreads)
  */
 int main ( int argc, char *argv[] )
 {
+    if ( argc < 3 ) {
+        printf("usage : ./binary thread_num array_size [is_set_mask:0]\n");
+        printf(" `- example: ./test 4 1000000\n");
+        printf(" `- example: ./test 4 1000000 1\n");
+        exit(0);
+    }
+
+    int thread_num = atoi(argv[1]);
+    if ( thread_num < 1 ) {
+        printf("thread_num must > 0\n");
+        exit(0);
+    }
+
+    int size = atoi(argv[2]);
+    if ( size < 1 ) {
+        printf("array_size must > 0\n");
+        exit(0);
+    }
+    ARRAY_SIZE = size;
+
+    if ( argc == 4 ) {
+        int is_set = atoi(argv[3]);
+        if ( is_set ) IS_SET = 1;
+    }
+
+    printf("The thread_num=[%d] array_size=[%d], is_set_mask=[%d]\n", thread_num, ARRAY_SIZE, IS_SET);
     init_nums_array();
-    int NUM_PROCS = sysconf(_SC_NPROCESSORS_CONF);
-    int ret = do_cpu_stress(NUM_PROCS);
-    printf("ret=%d\n", ret);
+    CPU_CORES = sysconf(_SC_NPROCESSORS_CONF);
+    do_cpu_thread_stress(thread_num);
     return EXIT_SUCCESS;
 }   /* ----------  end of function main  ---------- */
