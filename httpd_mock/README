@@ -1,0 +1,6 @@
+a simple httpd, only a mock service, supply:
+1. response generator
+2. timeout mechanism
+3. http 1.1 chunk simulation
+
+note: for test you can telnet to it :)
