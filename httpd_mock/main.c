@@ -20,24 +20,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 #include "fev_listener.h"
 #include "fev_buff.h"
 
 static char fake_response[] =
 "HTTP/1.1 200 OK\r\n"
 "Date: Tue, 13 Nov 2012 13:21:30 GMT\r\n"
-"Server: Apache\r\n"
-"Cache-Control: max-age=86400\r\n"
+"Server: Http mock\r\n"
 "Expires: Wed, 14 Nov 2012 13:21:30 GMT\r\n"
 "Last-Modified: Tue, 12 Jan 2010 13:48:00 GMT\r\n"
 "Accept-Ranges: bytes\r\n"
-"Content-Length: 81\r\n"
+"Content-Length: 86\r\n"
 "Connection: Keep-Alive\r\n"
 "Content-Type: text/html\r\n"
 "\r\n"
 "<html>\r\n"
 "<meta http-equiv=\"refresh\" content=\"0;url=http://www.baidu.com/\">\r\n"
 "</html>\r\n";
+
+static int current_conn = 0;
+static int max_open_files = 0;
 
 struct client;
 
@@ -65,9 +69,11 @@ client* create_client()
 static
 void destroy_client(client* cli)
 {
-    int fd = fevbuff_destroy(evbuff);
+    int fd = fevbuff_destroy(cli->evbuff);
     free(cli);
     close(fd);
+    current_conn--;
+    //printf("destroy client fd=%d\n", fd);
 }
 
 static void eg_read(fev_state* fev, fev_buff* evbuff, void* arg)
@@ -83,7 +89,7 @@ static void eg_read(fev_state* fev, fev_buff* evbuff, void* arg)
                  (read_buf[offset] == read_buf[offset+2] &&
                   read_buf[offset] == '\n') ) {
                 // head parser complete, send response
-                fevbuff_write(evbuff, fake_response, sizeof(fake_response));
+                fevbuff_write(evbuff, fake_response, sizeof(fake_response) + 1);
                 destroy_client(cli);
                 return;
             }
@@ -103,10 +109,24 @@ static void eg_error(fev_state* fev, fev_buff* evbuff, void* arg)
 
 static void eg_accept(fev_state* fev, int fd)
 {
-    client* cli = create_client();
+    if ( fd >= max_open_files ) {
+        printf("fd > max open files, cannot accept\n");
+        goto EG_ERROR;
+    }
+
     fev_buff* evbuff = fevbuff_new(fev, fd, eg_read, eg_error, cli);
-    if( evbuff )
-        printf("fev_buff created\n");
+    if( evbuff ) {
+        client* cli = create_client();
+        cli->offset = 0;
+        cli->tnode = NULL;
+        cli->evbuff = evbuff;
+        current_conn++;
+        //printf("fev_buff created fd=%d\n", fd);
+    } else {
+        printf("cannot create evbuff fd=%d\n", fd);
+EG_ERROR:
+        close(fd);
+    }
 }
 
 /* 
@@ -118,7 +138,18 @@ static void eg_accept(fev_state* fev, int fd)
 
 int main ( int argc, char *argv[] )
 {
-    fev_state* fev = fev_create(1024);
+    printf("httpd mock pid=%d\n", getpid());
+
+    struct rlimit limits;
+    int ret = getrlimit(RLIMIT_NOFILE, &limits);
+    if ( ret ) {
+        perror("fail to get max open files");
+        exit(1);
+    }
+
+    max_open_files = (int)limits.rlim_max;
+    printf("max open files = %d\n", max_open_files);
+    fev_state* fev = fev_create(max_open_files);
     if( !fev ) {
         printf("fev create failed\n");
         exit(1);

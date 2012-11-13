@@ -1,4 +1,4 @@
-TARGET = server
+TARGET = httpd_mock
 BIN_PATH = bin
 
 FLIB_PATH = ../flibs/final_libraries
