@@ -14,12 +14,12 @@ LIBS = -lfhash \
 	   -lpthread \
 	   -lflock \
 	   -lflog \
-	   -lftimer \
 	   -lrt \
-	   -lflist \
 	   -lfev \
+	   -lftimer \
 	   -lfnet \
 	   -lftu \
+	   -lflist \
 	   -lfmbuf
 
 SRCS = main.c
