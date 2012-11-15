@@ -16,269 +16,48 @@
  * =====================================================================================
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sched.h>
 #include <sys/time.h>
 #include <sys/resource.h>
-//#include <assert.h>
+#include <pthread.h>
 
-#include "fev_listener.h"
-#include "fev_buff.h"
-#include "fev_timer.h"
-#include "tu_inc.h"
+#include "http_handlers.h"
 
-static char fake_response[] =
-"HTTP/1.1 200 OK\r\n"
-"Date: Tue, 13 Nov 2012 13:21:30 GMT\r\n"
-"Server: Http mock\r\n"
-"Expires: Wed, 14 Nov 2012 13:21:30 GMT\r\n"
-"Last-Modified: Tue, 12 Jan 2010 13:48:00 GMT\r\n"
-"Accept-Ranges: bytes\r\n"
-"Content-Length: 86\r\n"
-"Connection: Keep-Alive\r\n"
-"Content-Type: text/html\r\n"
-"\r\n"
-"<html>\r\n"
-"<meta http-equiv=\"refresh\" content=\"0;url=http://www.baidu.com/\">\r\n"
-"</html>\r\n";
-
-static int current_conn = 0;
-static int max_open_files = 0;
-
-struct client;
-struct timer_mgr;
-
-typedef struct timer_node {
-    struct client*     cli;
-    struct timer_node* prev;
-    struct timer_node* next;
-    struct timer_mgr*  owner;
-    int                timeout; // unit [ms]
-} timer_node;
-
-typedef struct client {
-    int         fd;
-    int         offset;
-    int         request_complete;
-    int         response_complete;
-    my_time     last_active;
-    fev_buff*   evbuff;
-    timer_node* tnidx;
-} client;
-
-typedef struct timer_mgr {
-    timer_node* head;
-    timer_node* tail;
-    int         count;
-} timer_mgr;
+// global vars
+int max_open_files = 0;
 
 typedef struct {
-    timer_mgr  tm_main;
-    timer_mgr  tm_minor;
-    timer_mgr* current;
-    timer_mgr* backup;
-} client_mgr;
+    int max_queue_len;
+    int port;
+} service_arg;
 
-static client_mgr g_mgr;
+//static
+//void* service_thread(void* arg)
+//{
+//    service_arg* svc_arg = (service_arg*)arg;
+//    start_service(svc_arg->max_queue_len, svc_arg->port);
+//
+//    return NULL;
+//}
 
-static
-timer_node* timer_node_create(client* cli, int timeout)
-{
-    timer_node* tnode = malloc(sizeof(timer_node));
-    memset(tnode, 0, sizeof(*tnode));
-    cli->tnidx = tnode;
-    tnode->cli = cli;
-    tnode->timeout = timeout;
-    tnode->prev = tnode->next = NULL;
-
-    return tnode;
-}
-
-static
-void timer_node_delete(timer_mgr* mgr, timer_node* node)
-{
-    if ( !node )
-        return;
-    if ( !node->owner )
-        goto RELEASE;
-
-    //assert(node->owner == mgr);
-    if ( !node->prev ) { // node at head
-        mgr->head = node->next;
-        if ( mgr->head ) mgr->head->prev = NULL;
-    } else if ( !node->next ) { // node at tail
-        mgr->tail = node->prev;
-        if ( mgr->tail ) mgr->tail->next = NULL;
-    } else { // node at middle
-        node->prev->next = node->next;
-        node->next->prev = node->prev;
+int set_cpu_mask(int cpu_index)                                               {
+    cpu_set_t mask;
+    /*  CPU_ZERO initializes all the bits in the mask to zero. */
+    CPU_ZERO( &mask );
+    /*  CPU_SET sets only the bit corresponding to cpu. */
+    CPU_SET( cpu_index, &mask );
+    /*  sched_setaffinity returns 0 in success */
+    if( sched_setaffinity( 0, sizeof(mask), &mask ) == -1 ) {
+        printf("WARNING: Could not set CPU Affinity, continuing...\n");
+        return 1;
     }
-
-    node->owner = NULL;
-    mgr->count--;
-    if ( !mgr->count ) {
-        mgr->head = mgr->tail = NULL;
-    }
-
-RELEASE:
-    free(node);
-}
-
-static
-void timer_node_push(timer_mgr* mgr, timer_node* node)
-{
-    //assert( !node->owner );
-    if ( mgr->head == mgr->tail && mgr->head == NULL ) {
-        mgr->head = mgr->tail = node;
-    } else {
-        node->prev = mgr->tail;
-        mgr->tail->next = node;
-        mgr->tail = node;
-    }
-
-    node->owner = mgr;
-    mgr->count++;
-}
-
-static
-timer_node* timer_node_pop(timer_mgr* mgr)
-{
-    if ( !mgr->head ) {
-        return NULL;
-    } else {
-        timer_node* node = mgr->head;
-        mgr->head = mgr->head->next;
-        if ( !mgr->head ) {
-            mgr->tail = mgr->head;
-        } else {
-            mgr->head->prev = NULL;
-        }
-
-        node->prev = node->next = NULL;
-        node->owner = NULL;
-        mgr->count--;
-        return node;
-    }
-}
-
-static
-client* create_client()
-{
-    client* cli = malloc(sizeof(client));
-    memset(cli, 0, sizeof(*cli));
-
-    return cli;
-}
-
-static
-void destroy_client(client* cli)
-{
-    int fd = fevbuff_destroy(cli->evbuff);
-    timer_node_delete(g_mgr.current, cli->tnidx);
-    free(cli);
-    close(fd);
-    current_conn--;
-    printf("destroy client fd=%d\n", fd);
-}
-
-static
-void on_timer(fev_state* fev, void* arg)
-{
-    //printf("on timer\n");
-    client_mgr* mgr = (client_mgr*)arg;
-    timer_node* node = timer_node_pop(mgr->current);
-    if ( !node ) return;
-
-    my_time now;
-    get_cur_time(&now);
-
-    while ( node ) {
-        int diff = get_diff_time(&node->cli->last_active, &now);
-        printf("on timer: fd=%d, diff=%d\n", node->cli->fd, diff);
-        if ( (diff/1000) >= node->timeout ) {
-            if ( node->cli->response_complete < node->cli->request_complete ) {
-                printf("send response\n");
-                fevbuff_write(node->cli->evbuff, fake_response, sizeof(fake_response) + 1);
-                node->cli->response_complete++;
-                timer_node_push(mgr->backup, node);
-            } else {
-                printf("delete timeout\n");
-                destroy_client(node->cli);
-            }
-        } else {
-            timer_node_push(mgr->backup, node);
-        }
-
-        node = timer_node_pop(mgr->current);
-    }
-
-    // swap tmp timer node header and tailer
-    timer_mgr* tmp = mgr->current;
-    mgr->current = mgr->backup;
-    mgr->backup = tmp;
-}
-
-static void eg_read(fev_state* fev, fev_buff* evbuff, void* arg)
-{
-    int bytes = fevbuff_read(evbuff, NULL, 1024);
-    if ( bytes > 0 ) {
-        client* cli = (client*)arg;
-        get_cur_time(&cli->last_active);
-        if ( cli->request_complete ) {
-            return;
-        }
-
-        char* read_buf = fevbuff_rawget(evbuff);
-        int offset = cli->offset;
-
-        while ( offset < bytes-2 ) {
-            if ( (read_buf[offset] == read_buf[offset+1] && 
-                  read_buf[offset] == '\n') ||
-                 (read_buf[offset] == read_buf[offset+2] &&
-                  read_buf[offset] == '\n') ) {
-                // head parser complete, send response
-                cli->request_complete++;
-                timer_node* tnode = timer_node_create(cli, 100);
-                timer_node_push(g_mgr.current, tnode);
-                fevbuff_pop(evbuff, offset+1);
-                return;
-            }
-
-            offset++;
-        }
-
-        cli->offset = offset;
-    }
-}
-
-static void eg_error(fev_state* fev, fev_buff* evbuff, void* arg)
-{
-    printf("eg error fd=%d\n", ((client*)arg)->fd);
-    destroy_client((client*)arg);
-}
-
-static void eg_accept(fev_state* fev, int fd)
-{
-    if ( fd >= max_open_files ) {
-        printf("fd > max open files, cannot accept\n");
-        goto EG_ERROR;
-    }
-
-    client* cli = create_client();
-    fev_buff* evbuff = fevbuff_new(fev, fd, eg_read, eg_error, cli);
-    if( evbuff ) {
-        get_cur_time(&cli->last_active);
-        cli->fd = fd;
-        cli->evbuff = evbuff;
-        current_conn++;
-        //printf("fev_buff created fd=%d\n", fd);
-    } else {
-        printf("cannot create evbuff fd=%d\n", fd);
-EG_ERROR:
-        close(fd);
-    }
+    
+    return 0;
 }
 
 /* 
@@ -301,35 +80,33 @@ int main ( int argc, char *argv[] )
 
     max_open_files = (int)limits.rlim_max;
     printf("max open files = %d\n", max_open_files);
-    fev_state* fev = fev_create(max_open_files);
-    if( !fev ) {
-        printf("fev create failed\n");
-        exit(1);
-    }
-    printf("fev create successful\n");
+    //int per_thread_queue_len = max_open_files / 4;
+    //pthread_t t[4];
+    //int i = 0;
+    //service_arg arg = {per_thread_queue_len, 7758};
+    //for ( ; i<4; i++ ) {
+    //    pthread_create(&t[i], NULL, service_thread, &arg);
+    //}
 
-    fev_listen_info* fli = fev_add_listener(fev, 7758, eg_accept);
-    if( !fli ) {
-        printf("add listener failed\n");
-        exit(2);
-    }
-    printf("add listener successful, bind port is 7758\n");
+    //for ( i=0; i<4; i++ ) {
+    //    pthread_join(t[i], NULL);
+    //}
 
-    g_mgr.current = &g_mgr.tm_main;
-    g_mgr.backup = &g_mgr.tm_minor;
-    fev_timer* resp_timer = fev_add_timer_event(fev, 100000000l, 100000000l,
-                                                on_timer, &g_mgr);
-    if ( !resp_timer ) {
-        perror("register timer failed\n");
-        exit(1);
-    }
-    printf("register timer successful\n");
-    printf("fev_poll start\n");
+    init_service(max_open_files, 7758);
 
-    while(1) {
-        fev_poll(fev, 10000);
-        //printf("current connection number = %d\n", current_conn);
+    int i = 0;
+    while ( i < 0 ) {
+        int ret = fork();
+        if ( ret == 0 ) {
+            break;
+        }
+        i++;
     }
 
+    printf("start service pid=%d, ppid=%d\n", getpid(), getppid());
+    //if ( set_cpu_mask(i) ) {
+    //    printf("set cpu mask for cpuid=%d failed\n", i);
+    //}
+    start_service();
     return EXIT_SUCCESS;
 } /* ----------  end of function main  ---------- */

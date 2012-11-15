@@ -22,14 +22,15 @@ LIBS = -lfhash \
 	   -lflist \
 	   -lfmbuf
 
-SRCS = main.c
+SRCS = main.c \
+       http_handlers.c
 
 COPY_FILES = 
 	   
 DEPS = $(patsubst %.c,%.d,$(SRCS))
 OBJS = $(patsubst %.c,%.o,$(SRCS))
 
-CFLAGS = -Wall -Werror -g
+CFLAGS = -Wall -Werror -g -O2
 
 all:$(TARGET)
 $(TARGET):$(OBJS) $(DEPS)
