@@ -33,6 +33,7 @@
 #define FHTTP_REPONSE_HEADER_SIZE (sizeof(fake_response_header) + 10 )
 #define FHTTP_EOL                 "\r\n"
 #define FHTTP_EOL_SIZE            (sizeof(FHTTP_EOL))
+#define FHTTP_1MS                 (1000000l)
 
 /**
  * design mode:
@@ -270,7 +271,7 @@ void http_on_timer(fev_state* fev, void* arg)
                 // 2. fill whole response
                 int total_len = snprintf(mgr->response_buf, mgr->buffsize,
                                          fake_response_header fake_response_body,
-                                         response_size + (int)FHTTP_EOL_SIZE,
+                                         response_size + (int)FHTTP_EOL_SIZE + 1,
                                          mgr->response_body_buf);
                 // 3. send out
                 fevbuff_write(node->cli->evbuff, mgr->response_buf, total_len);
@@ -320,7 +321,9 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
                 }
 
                 // create timer node
-                timer_node* tnode = timer_node_create(cli, 100);
+                int latency = gen_random_latency(cli->owner->sargs->min_latency,
+                                                 cli->owner->sargs->max_latency);
+                timer_node* tnode = timer_node_create(cli, latency);
                 timer_node_push(cli->owner->current, tnode);
 
                 // pop last consumed data
@@ -395,7 +398,7 @@ int init_service(service_arg_t* sargs)
 
 int start_service()
 {
-    fev_timer* resp_timer = fev_add_timer_event(fev, 100000000l, 100000000l,
+    fev_timer* resp_timer = fev_add_timer_event(fev, 50 * FHTTP_1MS, 50 * FHTTP_1MS,
                                                 http_on_timer, cli_mgr);
     if ( !resp_timer ) {
         perror("register timer failed\n");
