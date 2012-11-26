@@ -21,7 +21,7 @@ static char fake_response[] =
 "Expires: Wed, 14 Nov 2012 13:21:30 GMT\r\n"
 "Last-Modified: Tue, 12 Jan 2010 13:48:00 GMT\r\n"
 "Accept-Ranges: bytes\r\n"
-"Content-Length: %s\r\n"
+"Content-Length: %d\r\n"
 "Connection: Keep-Alive\r\n"
 "Content-Type: text/html\r\n"
 "\r\n";
