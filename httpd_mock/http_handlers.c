@@ -83,9 +83,9 @@ static client_mgr* cli_mgr = NULL;
 static
 timer_node* timer_node_create(client* cli, int timeout)
 {
-    if ( cli->tnidex ) {
-        cli->tnidex->timeout = timeout;
-        return cli->tndix;
+    if ( cli->tnidx ) {
+        cli->tnidx->timeout = timeout;
+        return cli->tnidx;
     }
 
     timer_node* tnode = malloc(sizeof(timer_node));
@@ -268,7 +268,7 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
 
                 // check k-a valid
                 if ( (cli->request_complete - 1) != cli->response_complete ) {
-                    destroy_client(node->cli);
+                    destroy_client(cli);
                     return;
                 }
 
