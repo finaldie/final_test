@@ -14,14 +14,14 @@ LIBS = -lfhash \
 	   -lpthread \
 	   -lflock \
 	   -lflog \
-	   -lrt \
 	   -lfev \
 	   -lftimer \
 	   -lfnet \
 	   -lftu \
 	   -lflist \
 	   -lfmbuf \
-           -lfconf
+	   -lfconf \
+	   -lrt
 
 SRCS = main.c \
        http_handlers.c
