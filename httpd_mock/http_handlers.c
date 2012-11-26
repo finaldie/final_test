@@ -292,9 +292,9 @@ EG_ERROR:
     }
 }
 
-int init_service(int ev_queue_len, int port)
+int init_service(service_arg_t* sargs)
 {
-    fev = fev_create(ev_queue_len);
+    fev = fev_create(sargs->max_queue_len);
     if( !fev ) {
         printf("fev create failed\n");
         exit(1);
@@ -302,14 +302,14 @@ int init_service(int ev_queue_len, int port)
     printf("fev create successful\n");
 
     cli_mgr = create_client_mgr();
-    cli_mgr->max_open_files = ev_queue_len;
+    cli_mgr->max_open_files = sargs->max_queue_len;
 
-    fev_listen_info* fli = fev_add_listener(fev, port, http_accept, cli_mgr);
+    fev_listen_info* fli = fev_add_listener(fev, sargs->port, http_accept, cli_mgr);
     if( !fli ) {
         printf("add listener failed\n");
         exit(2);
     }
-    printf("add listener successful, bind port is %d\n", port);
+    printf("add listener successful, bind port is %d\n", sargs->port);
 
     return 0;
 }

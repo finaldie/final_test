@@ -26,15 +26,11 @@
 #include <sys/resource.h>
 #include <pthread.h>
 
+#include "read_conf.h"
 #include "http_handlers.h"
 
 // global vars
 int max_open_files = 0;
-
-typedef struct {
-    int max_queue_len;
-    int port;
-} service_arg;
 
 //static
 //void* service_thread(void* arg)
@@ -60,17 +56,26 @@ int set_cpu_mask(int cpu_index)                                               {
     return 0;
 }
 
-/* 
- * ===  FUNCTION  ======================================================================
- *         Name:  main
- *  Description:  
- * =====================================================================================
- */
-
-int main ( int argc, char *argv[] )
+void read_config(const char* filename, service_arg_t* sarg)
 {
-    printf("httpd mock pid=%d\n", getpid());
+    void _read_pairs(char* key, char* value) {
+        if ( strcmp(key, "listen_port") == 0 ) {
+            sarg->port = atoi(value);
+        } else if ( strcmp(key, "max_connection") == 0 ) {
+            sarg->max_queue_len = atoi(value);
+        }
+    }
 
+    int ret = GenConfig((char*)filename, _read_pairs);
+    if ( ret ) {
+        printf("configuration error, please check it\n");
+        exit(1);
+    }
+}
+
+int checkServiceArgs(service_arg_t* sargs)
+{
+    // check max open files
     struct rlimit limits;
     int ret = getrlimit(RLIMIT_NOFILE, &limits);
     if ( ret ) {
@@ -80,6 +85,74 @@ int main ( int argc, char *argv[] )
 
     max_open_files = (int)limits.rlim_max;
     printf("max open files = %d\n", max_open_files);
+    if ( sargs->max_queue_len > max_open_files ) {
+        sargs->max_queue_len = max_open_files;
+    }
+
+    // check workers
+    if ( sargs->workers <= 0 ) {
+        sargs->workers = 1;
+    }
+
+    // check port
+    if ( sargs->port <= 0 || sargs->port > 65535 ) {
+        printf("invalid port number [%d], must in [1-65535]\n", sargs->port);
+        exit(1);
+    }
+
+    return 0;
+}
+
+void printUsage()
+{
+    printf("usage:\n");
+    printf("  \\_ http_mock [-p port] [-c config_file]\n");
+    printf("args:\n");
+    printf("  \\_ p : listen port number\n");
+    printf("  \\_ c : configuration file, use the absolute path\n");
+}
+
+/* 
+ * ===  FUNCTION  ======================================================================
+ *         Name:  main
+ *  Description:  
+ * =====================================================================================
+ */
+
+int main ( int argc, char *argv[] )
+{
+    int port = 80;
+    char* config_file = NULL;
+    service_arg_t service_arg;
+    memset(&service_arg, 0, sizeof(service_arg_t));
+    service_arg.max_queue_len = 0;
+    service_arg.port = 80;
+    service_arg.workers = 1;
+
+    printf("httpd mock pid=%d\n", getpid());
+
+    if ( argc > 1 ) {
+        char opt;
+        while ((opt = getopt(argc, argv, "p:c:")) != -1) {
+            switch (opt) {
+                case 'c':
+                    config_file = optarg;
+                    break;
+                case 'p':
+                    port = atoi(optarg);
+                    break;
+                default:
+                    printUsage();
+                    exit(0);
+            }
+        }
+    } else {
+        printUsage();
+        exit(0);
+    }
+
+    checkServiceArgs(&service_arg);
+
     //int per_thread_queue_len = max_open_files / 4;
     //pthread_t t[4];
     //int i = 0;
@@ -92,10 +165,10 @@ int main ( int argc, char *argv[] )
     //    pthread_join(t[i], NULL);
     //}
 
-    init_service(max_open_files, 7758);
+    init_service(&service_arg);
 
     int i = 0;
-    while ( i < 0 ) {
+    while ( i < (service_arg.workers - 1) ) {
         int ret = fork();
         if ( ret == 0 ) {
             break;

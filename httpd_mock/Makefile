@@ -20,7 +20,8 @@ LIBS = -lfhash \
 	   -lfnet \
 	   -lftu \
 	   -lflist \
-	   -lfmbuf
+	   -lfmbuf \
+           -lfconf
 
 SRCS = main.c \
        http_handlers.c
