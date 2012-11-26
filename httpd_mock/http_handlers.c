@@ -21,13 +21,13 @@ static char fake_response[] =
 "Expires: Wed, 14 Nov 2012 13:21:30 GMT\r\n"
 "Last-Modified: Tue, 12 Jan 2010 13:48:00 GMT\r\n"
 "Accept-Ranges: bytes\r\n"
-"Content-Length: 86\r\n"
+"Content-Length: %s\r\n"
 "Connection: Keep-Alive\r\n"
 "Content-Type: text/html\r\n"
-"\r\n"
-"<html>\r\n"
-"<meta http-equiv=\"refresh\" content=\"0;url=http://www.baidu.com/\">\r\n"
-"</html>\r\n";
+"\r\n";
+//"<html>\r\n"
+//"<meta http-equiv=\"refresh\" content=\"0;url=http://www.baidu.com/\">\r\n"
+//"</html>\r\n";
 
 /**
  * design mode:
@@ -161,6 +161,15 @@ timer_node* timer_node_pop(timer_mgr* mgr)
 }
 
 static
+void create_response(char* buf, size_t size)
+{
+    memset(buf, 70, size);
+    buf[size] = '\r';
+    buf[size+1] = '\n';
+    buf[size+2] = '\0';
+}
+
+static
 client* create_client()
 {
     client* cli = malloc(sizeof(client));
@@ -208,7 +217,12 @@ void http_on_timer(fev_state* fev, void* arg)
         if ( diff >= node->timeout ) {
             if ( node->cli->response_complete < node->cli->request_complete ) {
                 //printf("send response\n");
-                fevbuff_write(node->cli->evbuff, fake_response, sizeof(fake_response) + 1);
+                char headerbuf[500];
+                int header_len = snprintf(headerbuf, 500, fake_response, 50);
+                fevbuff_write(node->cli->evbuff, headerbuf, header_len);
+                char sendbuf[100];
+                create_response(sendbuf, 50);
+                fevbuff_write(node->cli->evbuff, sendbuf, 52);
                 node->cli->response_complete++;
                 timer_node_push(mgr->backup, node);
             } else if ( diff > mgr->sargs->timeout ) {
