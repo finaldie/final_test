@@ -83,6 +83,11 @@ static client_mgr* cli_mgr = NULL;
 static
 timer_node* timer_node_create(client* cli, int timeout)
 {
+    if ( cli->tnidex ) {
+        cli->tnidex->timeout = timeout;
+        return cli->tndix;
+    }
+
     timer_node* tnode = malloc(sizeof(timer_node));
     memset(tnode, 0, sizeof(*tnode));
     cli->tnidx = tnode;
@@ -124,9 +129,9 @@ RELEASE:
 }
 
 static
-void timer_node_push(timer_mgr* mgr, timer_node* node)
+int timer_node_push(timer_mgr* mgr, timer_node* node)
 {
-    //assert( !node->owner );
+    if ( node->owner ) return 1;
     if ( mgr->head == mgr->tail && mgr->head == NULL ) {
         mgr->head = mgr->tail = node;
     } else {
@@ -137,6 +142,7 @@ void timer_node_push(timer_mgr* mgr, timer_node* node)
 
     node->owner = mgr;
     mgr->count++;
+    return 0;
 }
 
 static
@@ -218,10 +224,10 @@ void http_on_timer(fev_state* fev, void* arg)
             if ( node->cli->response_complete < node->cli->request_complete ) {
                 //printf("send response\n");
                 char headerbuf[500];
-                int header_len = snprintf(headerbuf, 500, fake_response, 50);
+                int header_len = snprintf(headerbuf, 500, fake_response, 52);
                 fevbuff_write(node->cli->evbuff, headerbuf, header_len);
                 char sendbuf[100];
-                create_response(sendbuf, 50);
+                create_response(sendbuf, 52);
                 fevbuff_write(node->cli->evbuff, sendbuf, 52);
                 node->cli->response_complete++;
                 timer_node_push(mgr->backup, node);
@@ -250,23 +256,30 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
     if ( bytes > 0 ) {
         client* cli = (client*)arg;
         get_cur_time(&cli->last_active);
-        if ( cli->request_complete ) {
-            return;
-        }
 
         char* read_buf = fevbuff_rawget(evbuff);
         int offset = cli->offset;
 
         while ( offset < bytes-2 ) {
-            if ( (read_buf[offset] == read_buf[offset+1] && 
-                  read_buf[offset] == '\n') ||
-                 (read_buf[offset] == read_buf[offset+2] &&
-                  read_buf[offset] == '\n') ) {
+            if ((read_buf[offset] == read_buf[offset+2] &&
+                 read_buf[offset] == '\n') ) {
                 // head parser complete, send response
                 cli->request_complete++;
+
+                // check k-a valid
+                if ( (cli->request_complete - 1) != cli->response_complete ) {
+                    destroy_client(node->cli);
+                    return;
+                }
+
+                // create timer node
                 timer_node* tnode = timer_node_create(cli, 100);
                 timer_node_push(cli->owner->current, tnode);
-                fevbuff_pop(evbuff, offset+1);
+
+                // pop last consumed data
+                fevbuff_pop(evbuff, offset+2);
+                // reset offset for next request
+                cli->offset = 0;
                 return;
             }
 

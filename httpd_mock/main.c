@@ -87,6 +87,18 @@ void read_config(const char* filename, service_arg_t* sargs)
             sargs->max_queue_len = atoi(value);
         } else if ( strcmp(key, "workers") == 0 ) {
             sargs->workers = atoi(value);
+        } else if ( strcmp(key, "min_latency") == 0 ) {
+            sargs->min_latency = atoi(value);
+        } else if ( strcmp(key, "max_latency") == 0 ) {
+            sargs->max_latency = atoi(value);
+        } else if ( strcmp(key, "min_response_size") == 0 ) {
+            sargs->min_response_size = atoi(value);
+        } else if ( strcmp(key, "max_response_size") == 0 ) {
+            sargs->max_response_size = atoi(value);
+        } else if ( strcmp(key, "always_chunked") == 0 ) {
+            sargs->always_chunked = atoi(value);
+        } else if ( strcmp(key, "timeout") == 0 ) {
+            sargs->timeout = atoi(value);
         }
     }
 
