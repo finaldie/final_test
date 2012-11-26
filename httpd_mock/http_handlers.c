@@ -303,7 +303,6 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
     int bytes = fevbuff_read(evbuff, NULL, 1024);
     if ( bytes > 0 ) {
         client* cli = (client*)arg;
-        get_cur_time(&cli->last_active);
 
         char* read_buf = fevbuff_rawget(evbuff);
         int offset = cli->offset;
@@ -321,6 +320,7 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
                 }
 
                 // create timer node
+                get_cur_time(&cli->last_active);
                 int latency = gen_random_latency(cli->owner->sargs->min_latency,
                                                  cli->owner->sargs->max_latency);
                 timer_node* tnode = timer_node_create(cli, latency);
