@@ -56,13 +56,29 @@ int set_cpu_mask(int cpu_index)                                               {
     return 0;
 }
 
-void read_config(const char* filename, service_arg_t* sargs)
+static
+int init_service_args(service_arg_t* sargs)
 {
-    // init args
+    if ( !sargs ) return 1;
+
     memset(sargs, 0, sizeof(service_arg_t));
     sargs->max_queue_len = 1024;
     sargs->port = 80;
     sargs->workers = 1;
+    sargs->min_latency = 100;
+    sargs->max_latency = 100;
+    sargs->min_response_size = 100;
+    sargs->max_response_size = 100;
+    sargs->always_chunked = 1;
+    sargs->timeout = 1000;
+
+    return 0;
+}
+
+void read_config(const char* filename, service_arg_t* sargs)
+{
+    // init args
+    init_service_args(sargs);
 
     void _read_pairs(char* key, char* value) {
         if ( strcmp(key, "listen_port") == 0 ) {
@@ -112,6 +128,13 @@ int checkServiceArgs(service_arg_t* sargs)
     printf("  \\_ listen_port : %d\n", sargs->port);
     printf("  \\_ workers : %d\n", sargs->workers);
     printf("  \\_ max_connection : %d\n", sargs->max_queue_len);
+    printf("  \\_ min_latency : %d\n", sargs->min_latency);
+    printf("  \\_ max_latency : %d\n", sargs->max_latency);
+    printf("  \\_ min_response_size : %d\n", sargs->min_response_size);
+    printf("  \\_ max_response_size : %d\n", sargs->max_response_size);
+    printf("  \\_ always_chunked : %d\n", sargs->always_chunked);
+    printf("  \\_ timeout : %d\n", sargs->timeout);
+    printf("\n");
 
     return 0;
 }
@@ -135,10 +158,7 @@ void printUsage()
 int main ( int argc, char *argv[] )
 {
     service_arg_t service_arg;
-    memset(&service_arg, 0, sizeof(service_arg_t));
-    service_arg.max_queue_len = 0;
-    service_arg.port = 80;
-    service_arg.workers = 1;
+    init_service_args(&service_arg);
 
     printf("httpd mock pid=%d\n", getpid());
 

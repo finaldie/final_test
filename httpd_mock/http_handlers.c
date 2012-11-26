@@ -72,7 +72,8 @@ typedef struct client_mgr {
     timer_mgr  tm_minor;
     timer_mgr* current;
     timer_mgr* backup;
-    int max_open_files;
+
+    service_arg_t* sargs;
     int current_conn;
 } client_mgr;
 
@@ -185,7 +186,7 @@ client_mgr* create_client_mgr()
     memset(mgr, 0, sizeof(client_mgr));
     mgr->current = &mgr->tm_main;
     mgr->backup = &mgr->tm_minor;
-    mgr->max_open_files = 0;
+    mgr->sargs = NULL;
     mgr->current_conn = 0;
 
     return mgr;
@@ -210,7 +211,7 @@ void http_on_timer(fev_state* fev, void* arg)
                 fevbuff_write(node->cli->evbuff, fake_response, sizeof(fake_response) + 1);
                 node->cli->response_complete++;
                 timer_node_push(mgr->backup, node);
-            } else if ( diff > 1000 ) {
+            } else if ( diff > mgr->sargs->timeout ) {
                 //printf("delete timeout\n");
                 destroy_client(node->cli);
             } else {
@@ -272,7 +273,7 @@ void http_accept(fev_state* fev, int fd, void* ud)
 {
     //printf("accept fd=%d, pid=%d\n", fd, getpid());
     client_mgr* mgr = (client_mgr*)ud;
-    if ( fd >= mgr->max_open_files ) {
+    if ( fd >= mgr->sargs->max_queue_len ) {
         printf("fd > max open files, cannot accept pid=%d\n", getpid());
         goto EG_ERROR;
     }
@@ -303,7 +304,7 @@ int init_service(service_arg_t* sargs)
     printf("fev create successful\n");
 
     cli_mgr = create_client_mgr();
-    cli_mgr->max_open_files = sargs->max_queue_len;
+    cli_mgr->sargs = sargs;
 
     fev_listen_info* fli = fev_add_listener(fev, sargs->port, http_accept, cli_mgr);
     if( !fli ) {
