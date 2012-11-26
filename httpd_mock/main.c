@@ -56,13 +56,21 @@ int set_cpu_mask(int cpu_index)                                               {
     return 0;
 }
 
-void read_config(const char* filename, service_arg_t* sarg)
+void read_config(const char* filename, service_arg_t* sargs)
 {
+    // init args
+    memset(sargs, 0, sizeof(service_arg_t));
+    sargs->max_queue_len = 1024;
+    sargs->port = 80;
+    sargs->workers = 1;
+
     void _read_pairs(char* key, char* value) {
         if ( strcmp(key, "listen_port") == 0 ) {
-            sarg->port = atoi(value);
+            sargs->port = atoi(value);
         } else if ( strcmp(key, "max_connection") == 0 ) {
-            sarg->max_queue_len = atoi(value);
+            sargs->max_queue_len = atoi(value);
+        } else if ( strcmp(key, "workers") == 0 ) {
+            sargs->workers = atoi(value);
         }
     }
 
@@ -100,6 +108,11 @@ int checkServiceArgs(service_arg_t* sargs)
         exit(1);
     }
 
+    printf("args:\n");
+    printf("  \\_ listen_port : %d\n", sargs->port);
+    printf("  \\_ workers : %d\n", sargs->workers);
+    printf("  \\_ max_connection : %d\n", sargs->max_queue_len);
+
     return 0;
 }
 
@@ -121,8 +134,6 @@ void printUsage()
 
 int main ( int argc, char *argv[] )
 {
-    int port = 80;
-    char* config_file = NULL;
     service_arg_t service_arg;
     memset(&service_arg, 0, sizeof(service_arg_t));
     service_arg.max_queue_len = 0;
@@ -136,10 +147,10 @@ int main ( int argc, char *argv[] )
         while ((opt = getopt(argc, argv, "p:c:")) != -1) {
             switch (opt) {
                 case 'c':
-                    config_file = optarg;
-                    break;
+                    read_config(optarg, &service_arg);
+                    goto prepare_start;
                 case 'p':
-                    port = atoi(optarg);
+                    service_arg.port = atoi(optarg);
                     break;
                 default:
                     printUsage();
@@ -151,6 +162,7 @@ int main ( int argc, char *argv[] )
         exit(0);
     }
 
+prepare_start:
     checkServiceArgs(&service_arg);
 
     //int per_thread_queue_len = max_open_files / 4;

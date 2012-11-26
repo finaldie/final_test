@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include "fev_listener.h"
 #include "fev_buff.h"
@@ -296,7 +297,7 @@ int init_service(service_arg_t* sargs)
 {
     fev = fev_create(sargs->max_queue_len);
     if( !fev ) {
-        printf("fev create failed\n");
+        printf("fev create failed, err=%s\n", strerror(errno));
         exit(1);
     }
     printf("fev create successful\n");
@@ -306,7 +307,7 @@ int init_service(service_arg_t* sargs)
 
     fev_listen_info* fli = fev_add_listener(fev, sargs->port, http_accept, cli_mgr);
     if( !fli ) {
-        printf("add listener failed\n");
+        printf("add listener failed, err=%s\n", strerror(errno));
         exit(2);
     }
     printf("add listener successful, bind port is %d\n", sargs->port);
