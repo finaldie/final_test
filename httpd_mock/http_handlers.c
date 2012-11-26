@@ -14,20 +14,25 @@
 
 #include "http_handlers.h"
 
-static char fake_response[] =
-"HTTP/1.1 200 OK\r\n"
-"Date: Tue, 13 Nov 2012 13:21:30 GMT\r\n"
-"Server: Http mock\r\n"
-"Expires: Wed, 14 Nov 2012 13:21:30 GMT\r\n"
-"Last-Modified: Tue, 12 Jan 2010 13:48:00 GMT\r\n"
-"Accept-Ranges: bytes\r\n"
-"Content-Length: %d\r\n"
-"Connection: Keep-Alive\r\n"
-"Content-Type: text/html\r\n"
-"\r\n";
+#define fake_response_header \
+"HTTP/1.1 200 OK\r\n" \
+"Date: Tue, 13 Nov 2012 13:21:30 GMT\r\n" \
+"Server: Http Mock\r\n" \
+"Last-Modified: Tue, 12 Jan 2010 13:48:00 GMT\r\n" \
+"Content-Length: %d\r\n" \
+"Connection: Keep-Alive\r\n" \
+"Content-Type: text/html\r\n" \
+"\r\n"
+
+#define fake_response_body "%s\r\n"
+
 //"<html>\r\n"
 //"<meta http-equiv=\"refresh\" content=\"0;url=http://www.baidu.com/\">\r\n"
 //"</html>\r\n";
+
+#define FHTTP_REPONSE_HEADER_SIZE (sizeof(fake_response_header) + 10 )
+#define FHTTP_EOL                 "\r\n"
+#define FHTTP_EOL_SIZE            (sizeof(FHTTP_EOL))
 
 /**
  * design mode:
@@ -74,7 +79,10 @@ typedef struct client_mgr {
     timer_mgr* backup;
 
     service_arg_t* sargs;
-    int current_conn;
+    int        current_conn;
+    size_t     buffsize;
+    char*      response_buf;
+    char*      response_body_buf;
 } client_mgr;
 
 static fev_state* fev = NULL;
@@ -195,7 +203,8 @@ void destroy_client(client* cli)
     //printf("destroy client fd=%d\n", fd);
 }
 
-client_mgr* create_client_mgr()
+static
+client_mgr* create_client_mgr(size_t max_response_size)
 {
     client_mgr* mgr = malloc(sizeof(client_mgr));
     memset(mgr, 0, sizeof(client_mgr));
@@ -203,10 +212,37 @@ client_mgr* create_client_mgr()
     mgr->backup = &mgr->tm_minor;
     mgr->sargs = NULL;
     mgr->current_conn = 0;
+    mgr->buffsize = FHTTP_REPONSE_HEADER_SIZE + max_response_size + FHTTP_EOL_SIZE + 1;
+    mgr->response_buf = malloc(mgr->buffsize);
+    memset(mgr->response_buf, 0, mgr->buffsize);
+    size_t body_size = max_response_size + FHTTP_EOL_SIZE + 1;
+    mgr->response_body_buf = malloc(body_size);
+    memset(mgr->response_body_buf, 0, body_size);
 
     return mgr;
 }
 
+static
+int gen_number_in_range(int min, int max)
+{
+    if ( min == max ) return min;
+    int offset = rand() % (max - min + 1);
+    return min + offset;
+}
+
+static
+int gen_random_response_size(int min, int max)
+{
+    return gen_number_in_range(min, max);
+}
+
+//static
+int gen_random_latency(int min, int max)
+{
+    return gen_number_in_range(min, max);
+}
+
+static
 void http_on_timer(fev_state* fev, void* arg)
 {
     //printf("on timer\n");
@@ -223,12 +259,22 @@ void http_on_timer(fev_state* fev, void* arg)
         if ( diff >= node->timeout ) {
             if ( node->cli->response_complete < node->cli->request_complete ) {
                 //printf("send response\n");
-                char headerbuf[500];
-                int header_len = snprintf(headerbuf, 500, fake_response, 52);
-                fevbuff_write(node->cli->evbuff, headerbuf, header_len);
-                char sendbuf[100];
-                create_response(sendbuf, 52);
-                fevbuff_write(node->cli->evbuff, sendbuf, 52);
+                // here we have two options to implement 
+                // 1. snprintf once ( we choose this )
+                // 2. writev ( in future )
+
+                // 1. generate response body
+                int response_size = gen_random_response_size(mgr->sargs->min_response_size,
+                                                             mgr->sargs->max_response_size);
+                create_response(mgr->response_body_buf, response_size);
+                // 2. fill whole response
+                int total_len = snprintf(mgr->response_buf, mgr->buffsize,
+                                         fake_response_header fake_response_body,
+                                         response_size + (int)FHTTP_EOL_SIZE,
+                                         mgr->response_body_buf);
+                // 3. send out
+                fevbuff_write(node->cli->evbuff, mgr->response_buf, total_len);
+
                 node->cli->response_complete++;
                 timer_node_push(mgr->backup, node);
             } else if ( diff > mgr->sargs->timeout ) {
@@ -250,6 +296,7 @@ void http_on_timer(fev_state* fev, void* arg)
     mgr->backup = tmp;
 }
 
+static
 void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
 {
     int bytes = fevbuff_read(evbuff, NULL, 1024);
@@ -290,12 +337,14 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
     }
 }
 
+static
 void http_error(fev_state* fev, fev_buff* evbuff, void* arg)
 {
     //printf("eg error fd=%d\n", ((client*)arg)->fd);
     destroy_client((client*)arg);
 }
 
+static
 void http_accept(fev_state* fev, int fd, void* ud)
 {
     //printf("accept fd=%d, pid=%d\n", fd, getpid());
@@ -330,7 +379,7 @@ int init_service(service_arg_t* sargs)
     }
     printf("fev create successful\n");
 
-    cli_mgr = create_client_mgr();
+    cli_mgr = create_client_mgr(sargs->max_response_size);
     cli_mgr->sargs = sargs;
 
     fev_listen_info* fli = fev_add_listener(fev, sargs->port, http_accept, cli_mgr);
@@ -339,6 +388,7 @@ int init_service(service_arg_t* sargs)
         exit(2);
     }
     printf("add listener successful, bind port is %d\n", sargs->port);
+    srand(time(NULL));
 
     return 0;
 }
