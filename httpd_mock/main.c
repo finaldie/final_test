@@ -110,7 +110,7 @@ void read_config(const char* filename, service_arg_t* sargs)
         } else if ( strcmp(key, "chunk_interval") == 0 ) {
             sargs->chunk_interval = atoi(value);
         } else if ( strcmp(key, "log_level") == 0 ) {
-            if ( strcmp(value, "TRACE") ) {
+            if ( strcmp(value, "TRACE") == 0 ) {
                 sargs->log_level = LOG_LEVEL_TRACE;
             } else if ( strcmp(value, "DEBUG") == 0 ) {
                 sargs->log_level = LOG_LEVEL_DEBUG;

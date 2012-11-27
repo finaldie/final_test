@@ -21,7 +21,7 @@ LIBS = -lfhash \
 	   -lflist \
 	   -lfmbuf \
 	   -lfconf \
-           -lfhash \
+	   -lfhash \
 	   -lrt
 
 SRCS = main.c \
