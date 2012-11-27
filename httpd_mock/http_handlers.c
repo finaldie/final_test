@@ -324,6 +324,11 @@ int set_chunked_status(client* cli)
                                                  mgr->sargs->max_response_size);
     cli->last_data_size = response_size;
     cli->chunk_size = response_size / mgr->sargs->chunk_blocks;
+    // fix zero chunk size issue
+    if ( cli->last_data_size && !cli->chunk_size ) {
+        cli->chunk_size = 1;
+    }
+
     return 0;
 }
 

@@ -1,21 +1,3 @@
-/*
- * =====================================================================================
- *
- *       Filename:  main.c
- *
- *    Description:  a simple server used fev
- *
- *        Version:  1.0
- *        Created:  12/05/2011 10:40:43
- *       Revision:  none
- *       Compiler:  gcc
- *
- *         Author:  finaldie
- *        Company:  
- *
- * =====================================================================================
- */
-
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +7,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <pthread.h>
+#include <signal.h>
 
 #include "read_conf.h"
 #include "http_handlers.h"
@@ -33,15 +16,6 @@
 // global vars
 int max_open_files = 0;
 log_file_t* glog = NULL;
-
-//static
-//void* service_thread(void* arg)
-//{
-//    service_arg* svc_arg = (service_arg*)arg;
-//    start_service(svc_arg->max_queue_len, svc_arg->port);
-//
-//    return NULL;
-//}
 
 int set_cpu_mask(int cpu_index)                                               {
     cpu_set_t mask;
@@ -222,6 +196,11 @@ void prepare(service_arg_t* sargs)
     flog_set_mode(LOG_ASYNC_MODE);
     flog_set_level(sargs->log_level);
     flog_set_flush_interval(1);
+
+    sigset_t set, old;
+    sigemptyset(&set);
+    sigaddset(&set, SIGPIPE);
+    pthread_sigmask(SIG_BLOCK, &set, &old);
 }
 
 // NOTICE: before fork, do not write log
@@ -243,13 +222,6 @@ void dump_config(service_arg_t* sargs)
     FLOG_INFO(glog, "  \\_ log_level : %d", sargs->log_level);
     FLOG_INFO(glog, "  \\_ log_filename : %s", sargs->log_filename);
 }
-
-/* 
- * ===  FUNCTION  ======================================================================
- *         Name:  main
- *  Description:  
- * =====================================================================================
- */
 
 int main ( int argc, char *argv[] )
 {
@@ -280,19 +252,6 @@ int main ( int argc, char *argv[] )
 
 prepare_start:
     checkServiceArgs(&service_arg);
-
-    //int per_thread_queue_len = max_open_files / 4;
-    //pthread_t t[4];
-    //int i = 0;
-    //service_arg arg = {per_thread_queue_len, 7758};
-    //for ( ; i<4; i++ ) {
-    //    pthread_create(&t[i], NULL, service_thread, &arg);
-    //}
-
-    //for ( i=0; i<4; i++ ) {
-    //    pthread_join(t[i], NULL);
-    //}
-
     init_service(&service_arg);
 
     int i = 0;
@@ -305,9 +264,9 @@ prepare_start:
     }
 
     printf("start service pid=%d, ppid=%d\n", getpid(), getppid());
-    //if ( set_cpu_mask(i) ) {
-    //    printf("set cpu mask for cpuid=%d failed\n", i);
-    //}
+    if ( set_cpu_mask(i) ) {
+        printf("set cpu mask for cpuid=%d failed\n", i);
+    }
 
     prepare(&service_arg);
     dump_config(&service_arg);
