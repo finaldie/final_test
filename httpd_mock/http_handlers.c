@@ -29,7 +29,7 @@
 "Date: Tue, 13 Nov 2012 13:21:30 GMT\r\n" \
 "Server: Http Mock\r\n" \
 "Last-Modified: Tue, 12 Jan 2010 13:48:00 GMT\r\n" \
-"Transfer-Encoding: chunked" \
+"Transfer-Encoding: chunked\r\n" \
 "Connection: Keep-Alive\r\n" \
 "Content-Type: text/html\r\n" \
 "\r\n"
@@ -42,10 +42,10 @@
 
 #define FHTTP_REPONSE_HEADER_SIZE (sizeof(fake_response_header) + 10 )
 #define FHTTP_CRLF                "\r\n"
-#define FHTTP_CRLF_SIZE           (sizeof(FHTTP_CRLF))
+#define FHTTP_CRLF_SIZE           (sizeof(FHTTP_CRLF) - 1)
 #define FHTTP_1MS                 (1000000l)
-#define FHTTP_CHUNK_END           "0\r\n"
-#define FHTTP_CHUNK_END_SIZE      (sizeof(FHTTP_CHUNK_END))
+#define FHTTP_CHUNK_END           "0\r\n\r\n"
+#define FHTTP_CHUNK_END_SIZE      (sizeof(FHTTP_CHUNK_END) - 1)
 #define FHTTP_CHUNK_RESPONSE_HEADER_SIZE (sizeof(fake_chunk_response_header))
 
 /**
@@ -253,13 +253,17 @@ int gen_random_latency(int min, int max)
 }
 
 static
-void create_response(char* buf, size_t size)
+int create_response(char* buf, size_t buffsize, size_t size)
 {
+    if ( size > (buffsize - 3) ) return 0;
+
     // fill all bytes with 'F'
     memset(buf, 70, size);
     buf[size] = '\r';
     buf[size+1] = '\n';
     buf[size+2] = '\0';
+
+    return size + FHTTP_CRLF_SIZE;
 }
 
 static
@@ -273,11 +277,11 @@ int send_http_response(client* cli)
     // 1. generate response body
     int response_size = gen_random_response_size(mgr->sargs->min_response_size,
                                                  mgr->sargs->max_response_size);
-    create_response(mgr->response_body_buf, response_size);
+    create_response(mgr->response_body_buf, mgr->buffsize, response_size);
     // 2. fill whole response
     int total_len = snprintf(mgr->response_buf, mgr->buffsize,
                              fake_response_header fake_response_body,
-                             response_size + (int)FHTTP_CRLF_SIZE + 1,
+                             response_size + (int)FHTTP_CRLF_SIZE + 2,
                              mgr->response_body_buf);
     // 3. send out
     fevbuff_write(cli->evbuff, mgr->response_buf, total_len);
@@ -303,7 +307,7 @@ size_t create_chunk_response(char* buf, size_t buffsize, size_t datasize)
     buf[offset+1] = '\n';
     buf[offset+2] = '\0';
 
-    size_t totalsize = offset + datasize + FHTTP_CRLF_SIZE;
+    size_t totalsize = offset + FHTTP_CRLF_SIZE;
     return totalsize;
 }
 
