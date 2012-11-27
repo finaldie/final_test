@@ -24,6 +24,16 @@
 "Content-Type: text/html\r\n" \
 "\r\n"
 
+#define fake_chunk_response_header \
+"HTTP/1.1 200 OK\r\n" \
+"Date: Tue, 13 Nov 2012 13:21:30 GMT\r\n" \
+"Server: Http Mock\r\n" \
+"Last-Modified: Tue, 12 Jan 2010 13:48:00 GMT\r\n" \
+"Transfer-Encoding: chunked" \
+"Connection: Keep-Alive\r\n" \
+"Content-Type: text/html\r\n" \
+"\r\n"
+
 #define fake_response_body "%s\r\n"
 
 //"<html>\r\n"
@@ -34,6 +44,9 @@
 #define FHTTP_CRLF                "\r\n"
 #define FHTTP_CRLF_SIZE           (sizeof(FHTTP_CRLF))
 #define FHTTP_1MS                 (1000000l)
+#define FHTTP_CHUNK_END           "0\r\n"
+#define FHTTP_CHUNK_END_SIZE      (sizeof(FHTTP_CHUNK_END))
+#define FHTTP_CHUNK_RESPONSE_HEADER_SIZE (sizeof(fake_chunk_response_header))
 
 /**
  * design mode:
@@ -65,6 +78,11 @@ typedef struct client {
     fev_buff*   evbuff;
     timer_node* tnidx;
     struct client_mgr* owner;
+
+    int         ischunked;
+    int         chunk_block_num;
+    int         chunk_size;
+    int         last_data_size;
 } client;
 
 typedef struct timer_mgr {
@@ -176,15 +194,6 @@ timer_node* timer_node_pop(timer_mgr* mgr)
 }
 
 static
-void create_response(char* buf, size_t size)
-{
-    memset(buf, 70, size);
-    buf[size] = '\r';
-    buf[size+1] = '\n';
-    buf[size+2] = '\0';
-}
-
-static
 client* create_client()
 {
     client* cli = malloc(sizeof(client));
@@ -237,10 +246,20 @@ int gen_random_response_size(int min, int max)
     return gen_number_in_range(min, max);
 }
 
-//static
+static
 int gen_random_latency(int min, int max)
 {
     return gen_number_in_range(min, max);
+}
+
+static
+void create_response(char* buf, size_t size)
+{
+    // fill all bytes with 'F'
+    memset(buf, 70, size);
+    buf[size] = '\r';
+    buf[size+1] = '\n';
+    buf[size+2] = '\0';
 }
 
 static
@@ -267,6 +286,79 @@ int send_http_response(client* cli)
     return 0;
 }
 
+// create simple chunk
+// follow the chunk format:
+// normal data:
+//  size CRLF
+//  data CRLF
+// end data:
+//  0 CRLF
+static
+size_t create_chunk_response(char* buf, size_t buffsize, size_t datasize)
+{
+    int offset = snprintf(buf, buffsize, "%lx\r\n", datasize);
+    memset(buf+offset, 70, datasize);
+    offset += datasize;
+    buf[offset] = '\r';
+    buf[offset+1] = '\n';
+    buf[offset+2] = '\0';
+
+    size_t totalsize = offset + datasize + FHTTP_CRLF_SIZE;
+    return totalsize;
+}
+
+static
+int set_chunked_status(client* cli)
+{
+    if ( !cli ) return 1;
+
+    client_mgr* mgr = cli->owner;
+    // 1. generate response body
+    int response_size = gen_random_response_size(mgr->sargs->min_response_size,
+                                                 mgr->sargs->max_response_size);
+    cli->last_data_size = response_size;
+    cli->chunk_size = response_size / mgr->sargs->chunk_blocks;
+    return 0;
+}
+
+static
+int send_http_chunked_response(client* cli)
+{
+    client_mgr* mgr = cli->owner;
+    int offset = 0;
+
+    if ( !cli->chunk_block_num ) {
+        // first time to send, construct header
+        memcpy(mgr->response_buf, fake_chunk_response_header,
+                FHTTP_CHUNK_RESPONSE_HEADER_SIZE);
+        offset += FHTTP_CHUNK_RESPONSE_HEADER_SIZE;
+    }
+
+    // fill response
+    if ( !cli->last_data_size ) {
+        memcpy(&mgr->response_buf[offset], FHTTP_CHUNK_END, FHTTP_CHUNK_END_SIZE);
+        offset += FHTTP_CHUNK_END_SIZE;
+        // mark response complete
+        cli->response_complete++;
+    } else {
+        int datasize = cli->chunk_size < cli->last_data_size ? cli->chunk_size :
+                                                               cli->last_data_size;
+        int len = create_chunk_response(mgr->response_buf + offset,
+                                        mgr->buffsize - offset,
+                                        datasize);
+        // update last data size
+        cli->last_data_size -= datasize;
+        offset += len;
+    }
+
+    // send out
+    fevbuff_write(cli->evbuff, mgr->response_buf, offset);
+
+    // update status
+    cli->chunk_block_num++;
+    return 0;
+}
+
 static
 void http_on_timer(fev_state* fev, void* arg)
 {
@@ -283,7 +375,11 @@ void http_on_timer(fev_state* fev, void* arg)
         //printf("on timer: fd=%d, diff=%d\n", node->cli->fd, diff);
         if ( diff >= node->timeout ) {
             if ( node->cli->response_complete < node->cli->request_complete ) {
-                send_http_response(node->cli);
+                if ( !node->cli->ischunked ) {
+                    send_http_response(node->cli);
+                } else {
+                    send_http_chunked_response(node->cli);
+                }
 
                 timer_node_push(mgr->backup, node);
             } else if ( diff >= mgr->sargs->timeout ) {
@@ -327,6 +423,10 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
                     return;
                 }
 
+                if ( cli->ischunked ) {
+                    set_chunked_status(cli);
+                }
+
                 // create timer node
                 get_cur_time(&cli->last_active);
                 int latency = gen_random_latency(cli->owner->sargs->min_latency,
@@ -336,7 +436,11 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
                     interval = latency;
                 } else { // latency == 0, send out directly
                     interval = cli->owner->sargs->timeout;
-                    send_http_response(cli);
+                    if (!cli->ischunked) {
+                        send_http_response(cli);
+                    } else {
+                        send_http_chunked_response(cli);
+                    }
                 }
 
                 timer_node* tnode = timer_node_create(cli, interval);
@@ -381,6 +485,7 @@ void http_accept(fev_state* fev, int fd, void* ud)
         cli->evbuff = evbuff;
         cli->owner = mgr;
         cli->owner->current_conn++;
+        cli->ischunked = mgr->sargs->always_chunked;
         //printf("fev_buff created fd=%d\n", fd);
     } else {
         printf("cannot create evbuff fd=%d\n", fd);
