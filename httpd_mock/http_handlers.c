@@ -11,6 +11,7 @@
 #include "fev_buff.h"
 #include "fev_timer.h"
 #include "tu_inc.h"
+#include "log_inc.h"
 
 #include "http_handlers.h"
 
@@ -106,6 +107,7 @@ typedef struct client_mgr {
 
 static fev_state* fev = NULL;
 static client_mgr* cli_mgr = NULL;
+extern log_file_t* glog;
 
 static
 timer_node* timer_node_create(client* cli, int timeout)
@@ -210,7 +212,7 @@ void destroy_client(client* cli)
     cli->owner->current_conn--;
     free(cli);
     close(fd);
-    //printf("destroy client fd=%d\n", fd);
+    FLOG_DEBUG(glog, "destroy client fd=%d", fd);
 }
 
 static
@@ -371,7 +373,7 @@ int send_http_chunked_response(client* cli)
 static
 void http_on_timer(fev_state* fev, void* arg)
 {
-    //printf("on timer\n");
+    FLOG_DEBUG(glog, "timer trigger");
     client_mgr* mgr = (client_mgr*)arg;
     timer_node* node = timer_node_pop(mgr->current);
     if ( !node ) return;
@@ -381,7 +383,8 @@ void http_on_timer(fev_state* fev, void* arg)
 
     while ( node ) {
         int diff = get_diff_time(&node->cli->last_active, &now) / 1000;
-        //printf("on timer: fd=%d, diff=%d\n", node->cli->fd, diff);
+        FLOG_DEBUG(glog, "on timer: fd=%d, diff=%d", node->cli->fd, diff);
+
         if ( diff >= node->timeout ) {
             if ( node->cli->response_complete < node->cli->request_complete ) {
                 if ( !node->cli->ischunked ) {
@@ -392,7 +395,7 @@ void http_on_timer(fev_state* fev, void* arg)
 
                 timer_node_push(mgr->backup, node);
             } else if ( diff >= mgr->sargs->timeout ) {
-                //printf("delete timeout\n");
+                FLOG_DEBUG(glog, "delete timeout");
                 destroy_client(node->cli);
             } else {
                 timer_node_push(mgr->backup, node);
@@ -432,6 +435,7 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
                     return;
                 }
 
+                // set chunk status if client need chunked response
                 if ( cli->ischunked ) {
                     set_chunked_status(cli);
                 }
@@ -472,17 +476,17 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
 static
 void http_error(fev_state* fev, fev_buff* evbuff, void* arg)
 {
-    //printf("eg error fd=%d\n", ((client*)arg)->fd);
+    FLOG_DEBUG(glog, "eg error fd=%d", ((client*)arg)->fd);
     destroy_client((client*)arg);
 }
 
 static
 void http_accept(fev_state* fev, int fd, void* ud)
 {
-    //printf("accept fd=%d, pid=%d\n", fd, getpid());
+    FLOG_DEBUG(glog, "accept fd=%d, pid=%d", fd, getpid());
     client_mgr* mgr = (client_mgr*)ud;
     if ( fd >= mgr->sargs->max_queue_len ) {
-        printf("fd > max open files, cannot accept pid=%d\n", getpid());
+        FLOG_ERROR(glog, "fd > max open files, cannot accept pid=%d", getpid());
         goto EG_ERROR;
     }
 
@@ -495,32 +499,40 @@ void http_accept(fev_state* fev, int fd, void* ud)
         cli->owner = mgr;
         cli->owner->current_conn++;
         cli->ischunked = mgr->sargs->always_chunked;
-        //printf("fev_buff created fd=%d\n", fd);
+        FLOG_DEBUG(glog, "fev_buff created fd=%d", fd);
     } else {
-        printf("cannot create evbuff fd=%d\n", fd);
+        FLOG_ERROR(glog, "cannot create evbuff fd=%d", fd);
 EG_ERROR:
         close(fd);
     }
+}
+
+static
+void http_on_show_status(fev_state* fev, void* arg)
+{
+    client_mgr* mgr = (client_mgr*)arg;
+
+    FLOG_INFO(glog, "current connection = %d", mgr->current_conn);
 }
 
 int init_service(service_arg_t* sargs)
 {
     fev = fev_create(sargs->max_queue_len);
     if( !fev ) {
-        printf("fev create failed, err=%s\n", strerror(errno));
+        FLOG_ERROR(glog, "fev create failed, err=%s", strerror(errno));
         exit(1);
     }
-    printf("fev create successful\n");
+    FLOG_INFO(glog, "fev create successful");
 
     cli_mgr = create_client_mgr(sargs->max_response_size);
     cli_mgr->sargs = sargs;
 
     fev_listen_info* fli = fev_add_listener(fev, sargs->port, http_accept, cli_mgr);
     if( !fli ) {
-        printf("add listener failed, err=%s\n", strerror(errno));
+        FLOG_ERROR(glog, "add listener failed, err=%s", strerror(errno));
         exit(2);
     }
-    printf("add listener successful, bind port is %d\n", sargs->port);
+    FLOG_INFO(glog, "add listener successful, bind port is %d", sargs->port);
     srand(time(NULL));
 
     return 0;
@@ -532,11 +544,19 @@ int start_service()
     fev_timer* resp_timer = fev_add_timer_event(fev, 50 * FHTTP_1MS, 50 * FHTTP_1MS,
                                                 http_on_timer, cli_mgr);
     if ( !resp_timer ) {
-        perror("register timer failed\n");
+        FLOG_ERROR(glog, "register response timer failed");
         exit(1);
     }
-    printf("register timer successful\n");
-    printf("fev_poll start\n");
+
+    fev_timer* status_timer = fev_add_timer_event(fev, 1000 * FHTTP_1MS, 1000 * FHTTP_1MS,
+                                                http_on_show_status, cli_mgr);
+    if ( !status_timer ) {
+        FLOG_ERROR(glog, "register status timer failed");
+        exit(1);
+    }
+
+    FLOG_INFO(glog, "register timer successful");
+    FLOG_INFO(glog, "fev_poll start");
 
     while(1) {
         fev_poll(fev, 10000);
