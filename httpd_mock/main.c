@@ -28,9 +28,11 @@
 
 #include "read_conf.h"
 #include "http_handlers.h"
+#include "log_inc.h"
 
 // global vars
 int max_open_files = 0;
+log_file_t* glog = NULL;
 
 //static
 //void* service_thread(void* arg)
@@ -71,6 +73,10 @@ int init_service_args(service_arg_t* sargs)
     sargs->max_response_size = 100;
     sargs->always_chunked = 1;
     sargs->timeout = 1000;
+    sargs->chunk_blocks = 2;
+    sargs->chunk_interval = 100;
+    sargs->log_level = LOG_LEVEL_INFO;
+    strncpy(sargs->log_filename, "/var/log/httpd_mock.log", FHTTP_MAX_LOG_FILENAME_SIZE);
 
     return 0;
 }
@@ -103,6 +109,22 @@ void read_config(const char* filename, service_arg_t* sargs)
             sargs->chunk_blocks = atoi(value);
         } else if ( strcmp(key, "chunk_interval") == 0 ) {
             sargs->chunk_interval = atoi(value);
+        } else if ( strcmp(key, "log_level") == 0 ) {
+            if ( strcmp(value, "TRACE") ) {
+                sargs->log_level = LOG_LEVEL_TRACE;
+            } else if ( strcmp(value, "DEBUG") == 0 ) {
+                sargs->log_level = LOG_LEVEL_DEBUG;
+            } else if ( strcmp(value, "INFO") == 0 ) {
+                sargs->log_level = LOG_LEVEL_INFO;
+            } else if ( strcmp(value, "WARN") == 0 ) {
+                sargs->log_level = LOG_LEVEL_WARN;
+            } else if ( strcmp(value, "ERROR") == 0 ) {
+                sargs->log_level = LOG_LEVEL_ERROR;
+            } else if ( strcmp(value, "FATAL") == 0 ) {
+                sargs->log_level = LOG_LEVEL_FATAL;
+            }
+        } else if ( strcmp(key, "log_filename") == 0 ) {
+            strncpy(sargs->log_filename, value, FHTTP_MAX_LOG_FILENAME_SIZE);
         }
     }
 
@@ -140,6 +162,26 @@ int checkServiceArgs(service_arg_t* sargs)
         exit(1);
     }
 
+    if ( sargs->min_latency < 0 || sargs->max_latency < 0 ) {
+        printf("latency must >= 0\n");
+        exit(1);
+    }
+
+    if ( sargs->min_response_size < 0 || sargs->max_response_size < 0 ) {
+        printf("response size must >= 0\n");
+        exit(1);
+    }
+
+    if ( sargs->chunk_blocks <= 0 ) {
+        printf("chunk blocks must > 0\n");
+        exit(1);
+    }
+
+    if ( sargs->log_level < LOG_LEVEL_TRACE || sargs->log_level > LOG_LEVEL_FATAL ) {
+        printf("invalid log level\n");
+        exit(1);
+    }
+
     printf("args:\n");
     printf("  \\_ listen_port : %d\n", sargs->port);
     printf("  \\_ workers : %d\n", sargs->workers);
@@ -152,6 +194,8 @@ int checkServiceArgs(service_arg_t* sargs)
     printf("  \\_ chunk_blocks : %d\n", sargs->chunk_blocks);
     printf("  \\_ chunk_interval : %d\n", sargs->chunk_interval);
     printf("  \\_ timeout : %d\n", sargs->timeout);
+    printf("  \\_ log_level : %d\n", sargs->log_level);
+    printf("  \\_ log_filename : %s\n", sargs->log_filename);
     printf("\n");
 
     return 0;
@@ -164,6 +208,39 @@ void printUsage()
     printf("args:\n");
     printf("  \\_ p : listen port number\n");
     printf("  \\_ c : configuration file, use the absolute path\n");
+}
+
+void prepare(service_arg_t* sargs)
+{
+    // create log system
+    glog = flog_create(sargs->log_filename);
+    if ( !glog ) {
+        printf("cannot init log system\n");
+        exit(1);
+    }
+
+    flog_set_level(sargs->log_level);
+    flog_set_flush_interval(1);
+}
+
+// NOTICE: before fork, do not write log
+void dump_config(service_arg_t* sargs)
+{
+    FLOG_INFO(glog, "server started");
+    FLOG_INFO(glog, "server args:");
+    FLOG_INFO(glog, "  \\_ listen_port : %d\n", sargs->port);
+    FLOG_INFO(glog, "  \\_ workers : %d\n", sargs->workers);
+    FLOG_INFO(glog, "  \\_ max_connection : %d\n", sargs->max_queue_len);
+    FLOG_INFO(glog, "  \\_ min_latency : %d\n", sargs->min_latency);
+    FLOG_INFO(glog, "  \\_ max_latency : %d\n", sargs->max_latency);
+    FLOG_INFO(glog, "  \\_ min_response_size : %d\n", sargs->min_response_size);
+    FLOG_INFO(glog, "  \\_ max_response_size : %d\n", sargs->max_response_size);
+    FLOG_INFO(glog, "  \\_ always_chunked : %d\n", sargs->always_chunked);
+    FLOG_INFO(glog, "  \\_ chunk_blocks : %d\n", sargs->chunk_blocks);
+    FLOG_INFO(glog, "  \\_ chunk_interval : %d\n", sargs->chunk_interval);
+    FLOG_INFO(glog, "  \\_ timeout : %d\n", sargs->timeout);
+    FLOG_INFO(glog, "  \\_ log_level : %d\n", sargs->log_level);
+    FLOG_INFO(glog, "  \\_ log_filename : %s\n", sargs->log_filename);
 }
 
 /* 
@@ -202,6 +279,7 @@ int main ( int argc, char *argv[] )
 
 prepare_start:
     checkServiceArgs(&service_arg);
+    prepare(&service_arg);
 
     //int per_thread_queue_len = max_open_files / 4;
     //pthread_t t[4];
@@ -230,6 +308,8 @@ prepare_start:
     //if ( set_cpu_mask(i) ) {
     //    printf("set cpu mask for cpuid=%d failed\n", i);
     //}
+
+    dump_config(&service_arg);
     start_service();
     return EXIT_SUCCESS;
 } /* ----------  end of function main  ---------- */
