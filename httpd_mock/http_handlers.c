@@ -46,7 +46,7 @@
 #define FHTTP_1MS                 (1000000l)
 #define FHTTP_CHUNK_END           "0\r\n\r\n"
 #define FHTTP_CHUNK_END_SIZE      (sizeof(FHTTP_CHUNK_END) - 1)
-#define FHTTP_CHUNK_RESPONSE_HEADER_SIZE (sizeof(fake_chunk_response_header))
+#define FHTTP_CHUNK_RESPONSE_HEADER_SIZE (sizeof(fake_chunk_response_header) - 1)
 
 /**
  * design mode:
@@ -284,8 +284,8 @@ int send_http_response(client* cli)
                              response_size + (int)FHTTP_CRLF_SIZE + 2,
                              mgr->response_body_buf);
     // 3. send out
-    fevbuff_write(cli->evbuff, mgr->response_buf, total_len);
     cli->response_complete++;
+    fevbuff_write(cli->evbuff, mgr->response_buf, total_len);
 
     return 0;
 }
@@ -331,6 +331,7 @@ int send_http_chunked_response(client* cli)
     client_mgr* mgr = cli->owner;
     int offset = 0;
 
+    // if this is the first chunk block, fill response headers first
     if ( !cli->chunk_block_num ) {
         // first time to send, construct header
         memcpy(mgr->response_buf, fake_chunk_response_header,
@@ -340,11 +341,14 @@ int send_http_chunked_response(client* cli)
 
     // fill response
     if ( !cli->last_data_size ) {
+        // if no data left, fill the last chunk
         memcpy(&mgr->response_buf[offset], FHTTP_CHUNK_END, FHTTP_CHUNK_END_SIZE);
         offset += FHTTP_CHUNK_END_SIZE;
-        // mark response complete
+        // mark response complete and reset block num for next request
         cli->response_complete++;
+        cli->chunk_block_num = 0;
     } else {
+        // have data left, fill normal chunk
         int datasize = cli->chunk_size < cli->last_data_size ? cli->chunk_size :
                                                                cli->last_data_size;
         int len = create_chunk_response(mgr->response_buf + offset,
@@ -355,11 +359,12 @@ int send_http_chunked_response(client* cli)
         offset += len;
     }
 
+    // update status
+    cli->chunk_block_num++;
+
     // send out
     fevbuff_write(cli->evbuff, mgr->response_buf, offset);
 
-    // update status
-    cli->chunk_block_num++;
     return 0;
 }
 
