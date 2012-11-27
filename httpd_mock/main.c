@@ -99,6 +99,10 @@ void read_config(const char* filename, service_arg_t* sargs)
             sargs->always_chunked = atoi(value);
         } else if ( strcmp(key, "timeout") == 0 ) {
             sargs->timeout = atoi(value);
+        } else if ( strcmp(key, "chunk_blocks") == 0 ) {
+            sargs->chunk_blocks = atoi(value);
+        } else if ( strcmp(key, "chunk_interval") == 0 ) {
+            sargs->chunk_interval = atoi(value);
         }
     }
 
@@ -145,6 +149,8 @@ int checkServiceArgs(service_arg_t* sargs)
     printf("  \\_ min_response_size : %d\n", sargs->min_response_size);
     printf("  \\_ max_response_size : %d\n", sargs->max_response_size);
     printf("  \\_ always_chunked : %d\n", sargs->always_chunked);
+    printf("  \\_ chunk_blocks : %d\n", sargs->chunk_blocks);
+    printf("  \\_ chunk_interval : %d\n", sargs->chunk_interval);
     printf("  \\_ timeout : %d\n", sargs->timeout);
     printf("\n");
 

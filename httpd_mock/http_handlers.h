@@ -10,6 +10,8 @@ typedef struct {
     int min_response_size;
     int max_response_size;
     int always_chunked;
+    int chunk_blocks;
+    int chunk_interval;
     int timeout;
 } service_arg_t;
 

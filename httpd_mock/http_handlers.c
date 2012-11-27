@@ -31,8 +31,8 @@
 //"</html>\r\n";
 
 #define FHTTP_REPONSE_HEADER_SIZE (sizeof(fake_response_header) + 10 )
-#define FHTTP_EOL                 "\r\n"
-#define FHTTP_EOL_SIZE            (sizeof(FHTTP_EOL))
+#define FHTTP_CRLF                "\r\n"
+#define FHTTP_CRLF_SIZE           (sizeof(FHTTP_CRLF))
 #define FHTTP_1MS                 (1000000l)
 
 /**
@@ -213,10 +213,10 @@ client_mgr* create_client_mgr(size_t max_response_size)
     mgr->backup = &mgr->tm_minor;
     mgr->sargs = NULL;
     mgr->current_conn = 0;
-    mgr->buffsize = FHTTP_REPONSE_HEADER_SIZE + max_response_size + FHTTP_EOL_SIZE + 1;
+    mgr->buffsize = FHTTP_REPONSE_HEADER_SIZE + max_response_size + FHTTP_CRLF_SIZE + 1;
     mgr->response_buf = malloc(mgr->buffsize);
     memset(mgr->response_buf, 0, mgr->buffsize);
-    size_t body_size = max_response_size + FHTTP_EOL_SIZE + 1;
+    size_t body_size = max_response_size + FHTTP_CRLF_SIZE + 1;
     mgr->response_body_buf = malloc(body_size);
     memset(mgr->response_body_buf, 0, body_size);
 
@@ -244,6 +244,30 @@ int gen_random_latency(int min, int max)
 }
 
 static
+int send_http_response(client* cli)
+{
+    // here we have two options to implement
+    // 1. snprintf once ( we choose this )
+    // 2. writev ( in future )
+
+    client_mgr* mgr = cli->owner;
+    // 1. generate response body
+    int response_size = gen_random_response_size(mgr->sargs->min_response_size,
+                                                 mgr->sargs->max_response_size);
+    create_response(mgr->response_body_buf, response_size);
+    // 2. fill whole response
+    int total_len = snprintf(mgr->response_buf, mgr->buffsize,
+                             fake_response_header fake_response_body,
+                             response_size + (int)FHTTP_CRLF_SIZE + 1,
+                             mgr->response_body_buf);
+    // 3. send out
+    fevbuff_write(cli->evbuff, mgr->response_buf, total_len);
+    cli->response_complete++;
+
+    return 0;
+}
+
+static
 void http_on_timer(fev_state* fev, void* arg)
 {
     //printf("on timer\n");
@@ -259,26 +283,10 @@ void http_on_timer(fev_state* fev, void* arg)
         //printf("on timer: fd=%d, diff=%d\n", node->cli->fd, diff);
         if ( diff >= node->timeout ) {
             if ( node->cli->response_complete < node->cli->request_complete ) {
-                //printf("send response\n");
-                // here we have two options to implement 
-                // 1. snprintf once ( we choose this )
-                // 2. writev ( in future )
+                send_http_response(node->cli);
 
-                // 1. generate response body
-                int response_size = gen_random_response_size(mgr->sargs->min_response_size,
-                                                             mgr->sargs->max_response_size);
-                create_response(mgr->response_body_buf, response_size);
-                // 2. fill whole response
-                int total_len = snprintf(mgr->response_buf, mgr->buffsize,
-                                         fake_response_header fake_response_body,
-                                         response_size + (int)FHTTP_EOL_SIZE + 1,
-                                         mgr->response_body_buf);
-                // 3. send out
-                fevbuff_write(node->cli->evbuff, mgr->response_buf, total_len);
-
-                node->cli->response_complete++;
                 timer_node_push(mgr->backup, node);
-            } else if ( diff > mgr->sargs->timeout ) {
+            } else if ( diff >= mgr->sargs->timeout ) {
                 //printf("delete timeout\n");
                 destroy_client(node->cli);
             } else {
@@ -323,7 +331,15 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
                 get_cur_time(&cli->last_active);
                 int latency = gen_random_latency(cli->owner->sargs->min_latency,
                                                  cli->owner->sargs->max_latency);
-                timer_node* tnode = timer_node_create(cli, latency);
+                int interval = 0;
+                if ( latency ) {
+                    interval = latency;
+                } else { // latency == 0, send out directly
+                    interval = cli->owner->sargs->timeout;
+                    send_http_response(cli);
+                }
+
+                timer_node* tnode = timer_node_create(cli, interval);
                 timer_node_push(cli->owner->current, tnode);
 
                 // pop last consumed data
@@ -398,6 +414,7 @@ int init_service(service_arg_t* sargs)
 
 int start_service()
 {
+    // every 50ms, the timer will wake up
     fev_timer* resp_timer = fev_add_timer_event(fev, 50 * FHTTP_1MS, 50 * FHTTP_1MS,
                                                 http_on_timer, cli_mgr);
     if ( !resp_timer ) {
