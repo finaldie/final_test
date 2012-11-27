@@ -219,6 +219,7 @@ void prepare(service_arg_t* sargs)
         exit(1);
     }
 
+    flog_set_mode(LOG_ASYNC_MODE);
     flog_set_level(sargs->log_level);
     flog_set_flush_interval(1);
 }
@@ -228,19 +229,19 @@ void dump_config(service_arg_t* sargs)
 {
     FLOG_INFO(glog, "server started");
     FLOG_INFO(glog, "server args:");
-    FLOG_INFO(glog, "  \\_ listen_port : %d\n", sargs->port);
-    FLOG_INFO(glog, "  \\_ workers : %d\n", sargs->workers);
-    FLOG_INFO(glog, "  \\_ max_connection : %d\n", sargs->max_queue_len);
-    FLOG_INFO(glog, "  \\_ min_latency : %d\n", sargs->min_latency);
-    FLOG_INFO(glog, "  \\_ max_latency : %d\n", sargs->max_latency);
-    FLOG_INFO(glog, "  \\_ min_response_size : %d\n", sargs->min_response_size);
-    FLOG_INFO(glog, "  \\_ max_response_size : %d\n", sargs->max_response_size);
-    FLOG_INFO(glog, "  \\_ always_chunked : %d\n", sargs->always_chunked);
-    FLOG_INFO(glog, "  \\_ chunk_blocks : %d\n", sargs->chunk_blocks);
-    FLOG_INFO(glog, "  \\_ chunk_interval : %d\n", sargs->chunk_interval);
-    FLOG_INFO(glog, "  \\_ timeout : %d\n", sargs->timeout);
-    FLOG_INFO(glog, "  \\_ log_level : %d\n", sargs->log_level);
-    FLOG_INFO(glog, "  \\_ log_filename : %s\n", sargs->log_filename);
+    FLOG_INFO(glog, "  \\_ listen_port : %d", sargs->port);
+    FLOG_INFO(glog, "  \\_ workers : %d", sargs->workers);
+    FLOG_INFO(glog, "  \\_ max_connection : %d", sargs->max_queue_len);
+    FLOG_INFO(glog, "  \\_ min_latency : %d", sargs->min_latency);
+    FLOG_INFO(glog, "  \\_ max_latency : %d", sargs->max_latency);
+    FLOG_INFO(glog, "  \\_ min_response_size : %d", sargs->min_response_size);
+    FLOG_INFO(glog, "  \\_ max_response_size : %d", sargs->max_response_size);
+    FLOG_INFO(glog, "  \\_ always_chunked : %d", sargs->always_chunked);
+    FLOG_INFO(glog, "  \\_ chunk_blocks : %d", sargs->chunk_blocks);
+    FLOG_INFO(glog, "  \\_ chunk_interval : %d", sargs->chunk_interval);
+    FLOG_INFO(glog, "  \\_ timeout : %d", sargs->timeout);
+    FLOG_INFO(glog, "  \\_ log_level : %d", sargs->log_level);
+    FLOG_INFO(glog, "  \\_ log_filename : %s", sargs->log_filename);
 }
 
 /* 
@@ -279,7 +280,6 @@ int main ( int argc, char *argv[] )
 
 prepare_start:
     checkServiceArgs(&service_arg);
-    prepare(&service_arg);
 
     //int per_thread_queue_len = max_open_files / 4;
     //pthread_t t[4];
@@ -309,7 +309,9 @@ prepare_start:
     //    printf("set cpu mask for cpuid=%d failed\n", i);
     //}
 
+    prepare(&service_arg);
     dump_config(&service_arg);
+
     start_service();
     return EXIT_SUCCESS;
 } /* ----------  end of function main  ---------- */
