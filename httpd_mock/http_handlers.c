@@ -344,6 +344,7 @@ int send_http_chunked_response(client* cli)
         // if no data left, fill the last chunk
         memcpy(&mgr->response_buf[offset], FHTTP_CHUNK_END, FHTTP_CHUNK_END_SIZE);
         offset += FHTTP_CHUNK_END_SIZE;
+
         // mark response complete and reset block num for next request
         cli->response_complete++;
         cli->chunk_block_num = 0;
@@ -354,13 +355,12 @@ int send_http_chunked_response(client* cli)
         int len = create_chunk_response(mgr->response_buf + offset,
                                         mgr->buffsize - offset,
                                         datasize);
-        // update last data size
+        // update status
         cli->last_data_size -= datasize;
+        cli->chunk_block_num++;
+
         offset += len;
     }
-
-    // update status
-    cli->chunk_block_num++;
 
     // send out
     fevbuff_write(cli->evbuff, mgr->response_buf, offset);
