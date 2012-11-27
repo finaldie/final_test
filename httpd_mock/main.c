@@ -38,6 +38,7 @@ int init_service_args(service_arg_t* sargs)
     if ( !sargs ) return 1;
 
     memset(sargs, 0, sizeof(service_arg_t));
+    // configuration args
     sargs->max_queue_len = 1024;
     sargs->port = 80;
     sargs->workers = 1;
@@ -52,6 +53,8 @@ int init_service_args(service_arg_t* sargs)
     sargs->log_level = LOG_LEVEL_INFO;
     strncpy(sargs->log_filename, "/var/log/httpd_mock.log", FHTTP_MAX_LOG_FILENAME_SIZE);
 
+    // common args
+    sargs->listen_fd = -1;
     return 0;
 }
 
@@ -102,7 +105,7 @@ void read_config(const char* filename, service_arg_t* sargs)
         }
     }
 
-    int ret = GenConfig((char*)filename, _read_pairs);
+    int ret = GenConfig(filename, _read_pairs);
     if ( ret ) {
         printf("configuration error, please check it\n");
         exit(1);
@@ -252,7 +255,7 @@ int main ( int argc, char *argv[] )
 
 prepare_start:
     checkServiceArgs(&service_arg);
-    init_service(&service_arg);
+    init_listen(&service_arg);
 
     int i = 0;
     while ( i < (service_arg.workers - 1) ) {
@@ -269,6 +272,7 @@ prepare_start:
     }
 
     prepare(&service_arg);
+    init_service(&service_arg);
     dump_config(&service_arg);
 
     start_service();

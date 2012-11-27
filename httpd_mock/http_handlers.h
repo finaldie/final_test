@@ -4,6 +4,7 @@
 #define FHTTP_MAX_LOG_FILENAME_SIZE 256
 
 typedef struct {
+    // from configuration
     int max_queue_len;
     int port;
     int workers;
@@ -17,8 +18,12 @@ typedef struct {
     int timeout;
     int log_level;
     char log_filename[FHTTP_MAX_LOG_FILENAME_SIZE];
+
+    // common args
+    int listen_fd;
 } service_arg_t;
 
+int init_listen(service_arg_t*);
 int init_service(service_arg_t*);
 int start_service();
 

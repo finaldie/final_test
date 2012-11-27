@@ -12,6 +12,7 @@
 #include "fev_timer.h"
 #include "tu_inc.h"
 #include "log_inc.h"
+#include "net_core.h"
 
 #include "http_handlers.h"
 
@@ -37,10 +38,7 @@
 
 #define fake_response_body "%s\r\n"
 
-//"<html>\r\n"
-//"<meta http-equiv=\"refresh\" content=\"0;url=http://www.baidu.com/\">\r\n"
-//"</html>\r\n";
-
+#define FHTTP_ACCEPT_QUEUE_SIZE   1024
 #define FHTTP_REPONSE_HEADER_SIZE (sizeof(fake_response_header) + 10 )
 #define FHTTP_CRLF                "\r\n"
 #define FHTTP_CRLF_SIZE           (sizeof(FHTTP_CRLF) - 1)
@@ -520,6 +518,17 @@ void http_on_show_status(fev_state* fev, void* arg)
     FLOG_INFO(glog, "current connection = %d", mgr->current_conn);
 }
 
+int init_listen(service_arg_t* sargs)
+{
+    int listen_fd = net_create_listen(NULL, sargs->port, FHTTP_ACCEPT_QUEUE_SIZE, 0);
+    if( listen_fd < 0 ) {
+        return 1;
+    }
+
+    sargs->listen_fd = listen_fd;
+    return 0;
+}
+
 int init_service(service_arg_t* sargs)
 {
     fev = fev_create(sargs->max_queue_len);
@@ -532,12 +541,14 @@ int init_service(service_arg_t* sargs)
     cli_mgr = create_client_mgr(sargs->max_response_size);
     cli_mgr->sargs = sargs;
 
-    fev_listen_info* fli = fev_add_listener(fev, sargs->port, http_accept, cli_mgr);
+    fev_listen_info* fli = fev_add_listener_byfd(fev, sargs->listen_fd, http_accept, cli_mgr);
     if( !fli ) {
         FLOG_ERROR(glog, "add listener failed, err=%s", strerror(errno));
         exit(2);
     }
     FLOG_INFO(glog, "add listener successful, bind port is %d", sargs->port);
+
+    // init random seed
     srand(time(NULL));
 
     return 0;
