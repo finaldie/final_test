@@ -55,6 +55,8 @@ int init_service_args(service_arg_t* sargs)
 
     // common args
     sargs->listen_fd = -1;
+    sargs->cpu_cores = sysconf(_SC_NPROCESSORS_CONF);
+
     return 0;
 }
 
@@ -267,7 +269,7 @@ prepare_start:
     }
 
     printf("start service pid=%d, ppid=%d\n", getpid(), getppid());
-    if ( set_cpu_mask(i) ) {
+    if ( set_cpu_mask(i % service_arg.cpu_cores) ) {
         printf("set cpu mask for cpuid=%d failed\n", i);
     }
 

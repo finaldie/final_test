@@ -21,6 +21,7 @@ typedef struct {
 
     // common args
     int listen_fd;
+    int cpu_cores;
 } service_arg_t;
 
 int init_listen(service_arg_t*);
