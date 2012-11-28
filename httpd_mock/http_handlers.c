@@ -376,7 +376,7 @@ int send_http_chunked_response(client* cli)
 static
 void http_on_timer(fev_state* fev, void* arg)
 {
-    FLOG_DEBUG(glog, "timer trigger");
+    //FLOG_DEBUG(glog, "timer trigger");
     client_mgr* mgr = (client_mgr*)arg;
     timer_node* node = timer_node_pop(mgr->current);
     if ( !node ) return;
@@ -398,7 +398,7 @@ void http_on_timer(fev_state* fev, void* arg)
 
                 timer_node_push(mgr->backup, node);
             } else if ( diff >= mgr->sargs->timeout ) {
-                FLOG_DEBUG(glog, "delete timeout");
+                FLOG_WARN(glog, "delete timeout");
                 destroy_client(node->cli);
             } else {
                 timer_node_push(mgr->backup, node);
@@ -435,6 +435,7 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
                 // check k-a valid
                 if ( (cli->request_complete - 1) != cli->response_complete ) {
                     destroy_client(cli);
+                    FLOG_ERROR(glog, "not follow keep-alive rules, check client side");
                     return;
                 }
 
