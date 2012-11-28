@@ -38,7 +38,6 @@
 
 #define fake_response_body "%s\r\n"
 
-#define FHTTP_ACCEPT_QUEUE_SIZE   1024
 #define FHTTP_REPONSE_HEADER_SIZE (sizeof(fake_response_header) + 10 )
 #define FHTTP_CRLF                "\r\n"
 #define FHTTP_CRLF_SIZE           (sizeof(FHTTP_CRLF) - 1)
@@ -521,7 +520,7 @@ void http_on_show_status(fev_state* fev, void* arg)
 
 int init_listen(service_arg_t* sargs)
 {
-    int listen_fd = net_create_listen(NULL, sargs->port, FHTTP_ACCEPT_QUEUE_SIZE, 0);
+    int listen_fd = net_create_listen(NULL, sargs->port, sargs->max_open_files, 0);
     if( listen_fd < 0 ) {
         return 1;
     }

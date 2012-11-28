@@ -20,6 +20,7 @@ typedef struct {
     char log_filename[FHTTP_MAX_LOG_FILENAME_SIZE];
 
     // common args
+    int max_open_files;
     int listen_fd;
     int cpu_cores;
 } service_arg_t;

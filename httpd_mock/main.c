@@ -57,6 +57,15 @@ int init_service_args(service_arg_t* sargs)
     sargs->listen_fd = -1;
     sargs->cpu_cores = sysconf(_SC_NPROCESSORS_CONF);
 
+    struct rlimit limits;
+    int ret = getrlimit(RLIMIT_NOFILE, &limits);
+    if ( ret ) {
+        perror("fail to get max open files");
+        exit(1);
+    }
+
+    sargs->max_open_files = (int)limits.rlim_max;
+
     return 0;
 }
 
