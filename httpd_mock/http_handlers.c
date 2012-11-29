@@ -395,7 +395,7 @@ void http_on_timer(fev_state* fev, void* arg)
 
                 if ( ret < 0 ) {
                     // something goes wrong
-                    FLOG_ERROR(glog, "on timer, but buffer cannot write, fd=%d", fd);
+                    FLOG_TRACE(glog, "on timer, but buffer cannot write, fd=%d", fd);
                     goto pop_next_node;
                 }
 
@@ -476,7 +476,7 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
 
                     if ( ret < 0 ) {
                         // something goes wrong, client has been destroyed
-                        FLOG_ERROR(glog, "buffer cannot write, fd=%d", fd);
+                        FLOG_TRACE(glog, "buffer cannot write, fd=%d", fd);
                         return;
                     }
                 }
