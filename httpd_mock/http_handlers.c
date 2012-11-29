@@ -284,9 +284,7 @@ int send_http_response(client* cli)
                              mgr->response_body_buf);
     // 3. send out
     cli->response_complete++;
-    fevbuff_write(cli->evbuff, mgr->response_buf, total_len);
-
-    return 0;
+    return fevbuff_write(cli->evbuff, mgr->response_buf, total_len);
 }
 
 // create simple chunk
@@ -367,9 +365,7 @@ int send_http_chunked_response(client* cli)
     }
 
     // send out
-    fevbuff_write(cli->evbuff, mgr->response_buf, offset);
-
-    return 0;
+    return fevbuff_write(cli->evbuff, mgr->response_buf, offset);
 }
 
 static
@@ -389,10 +385,18 @@ void http_on_timer(fev_state* fev, void* arg)
 
         if ( diff >= node->timeout ) {
             if ( node->cli->response_complete < node->cli->request_complete ) {
+                int ret = -1;
+                int fd = node->cli->fd;
                 if ( !node->cli->ischunked ) {
-                    send_http_response(node->cli);
+                    ret = send_http_response(node->cli);
                 } else {
-                    send_http_chunked_response(node->cli);
+                    ret = send_http_chunked_response(node->cli);
+                }
+
+                if ( ret < 0 ) {
+                    // something goes wrong
+                    FLOG_ERROR(glog, "on timer, but buffer cannot write, fd=%d", fd);
+                    continue;
                 }
 
                 timer_node_push(mgr->backup, node);
@@ -403,6 +407,7 @@ void http_on_timer(fev_state* fev, void* arg)
                 timer_node_push(mgr->backup, node);
             }
         } else {
+            // not time out
             timer_node_push(mgr->backup, node);
         }
 
@@ -418,10 +423,19 @@ void http_on_timer(fev_state* fev, void* arg)
 static
 void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
 {
+    client* cli = (client*)arg;
+    int fd = cli->fd;
     int bytes = fevbuff_read(evbuff, NULL, 1024);
-    if ( bytes > 0 ) {
-        client* cli = (client*)arg;
+    if ( bytes < 0 ) {
+        FLOG_ERROR(glog, "buffer cannot read, fd=%d", fd);
+        return;
+    } else if ( bytes == 0 ) {
+        FLOG_WARN(glog, "buffer read 0 byte, fd=%d", fd);
+        return;
+    }
 
+    // we have data need to process
+    if ( bytes > 0 ) {
         char* read_buf = fevbuff_rawget(evbuff);
         int offset = cli->offset;
 
@@ -452,10 +466,17 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
                     interval = latency;
                 } else { // latency == 0, send out directly
                     interval = cli->owner->sargs->timeout;
+                    int ret = -1;
                     if (!cli->ischunked) {
-                        send_http_response(cli);
+                        ret = send_http_response(cli);
                     } else {
-                        send_http_chunked_response(cli);
+                        ret = send_http_chunked_response(cli);
+                    }
+
+                    if ( ret < 0 ) {
+                        // something goes wrong, client has been destroyed
+                        FLOG_ERROR(glog, "buffer cannot write, fd=%d", fd);
+                        return;
                     }
                 }
 
