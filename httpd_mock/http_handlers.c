@@ -396,7 +396,7 @@ void http_on_timer(fev_state* fev, void* arg)
                 if ( ret < 0 ) {
                     // something goes wrong
                     FLOG_ERROR(glog, "on timer, but buffer cannot write, fd=%d", fd);
-                    continue;
+                    goto pop_next_node;
                 }
 
                 timer_node_push(mgr->backup, node);
@@ -411,6 +411,7 @@ void http_on_timer(fev_state* fev, void* arg)
             timer_node_push(mgr->backup, node);
         }
 
+pop_next_node:
         node = timer_node_pop(mgr->current);
     }
 
