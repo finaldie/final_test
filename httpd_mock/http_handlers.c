@@ -395,7 +395,7 @@ void http_on_timer(fev_state* fev, void* arg)
 
                 if ( ret < 0 ) {
                     // something goes wrong
-                    FLOG_TRACE(glog, "on timer, but buffer cannot write, fd=%d", fd);
+                    FLOG_DEBUG(glog, "on timer, but buffer cannot write, fd=%d", fd);
                     goto pop_next_node;
                 }
 
@@ -428,10 +428,10 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
     int fd = cli->fd;
     int bytes = fevbuff_read(evbuff, NULL, 1024);
     if ( bytes < 0 ) {
-        FLOG_ERROR(glog, "buffer cannot read, fd=%d", fd);
+        FLOG_DEBUG(glog, "buffer cannot read, fd=%d", fd);
         return;
     } else if ( bytes == 0 ) {
-        FLOG_WARN(glog, "buffer read 0 byte, fd=%d", fd);
+        FLOG_DEBUG(glog, "buffer read 0 byte, fd=%d", fd);
         return;
     }
 
@@ -476,7 +476,7 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
 
                     if ( ret < 0 ) {
                         // something goes wrong, client has been destroyed
-                        FLOG_TRACE(glog, "buffer cannot write, fd=%d", fd);
+                        FLOG_DEBUG(glog, "buffer cannot write, fd=%d", fd);
                         return;
                     }
                 }
