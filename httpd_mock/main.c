@@ -42,14 +42,18 @@ int init_service_args(service_arg_t* sargs)
     sargs->max_queue_len = 1024;
     sargs->port = 80;
     sargs->workers = 1;
+    sargs->response_type = RESP_TYPE_MIX;
+    sargs->chunk_ratio = 20;
     sargs->min_latency = 100;
-    sargs->max_latency = 100;
+    sargs->max_latency = 200;
     sargs->min_response_size = 100;
-    sargs->max_response_size = 100;
-    sargs->always_chunked = 1;
-    sargs->timeout = 1000;
+    sargs->max_response_size = 200;
+    sargs->min_chunk_latency = 100;
+    sargs->max_chunk_latency = 200;
+    sargs->min_chunk_response_size = 100;
+    sargs->max_chunk_response_size = 200;
     sargs->chunk_blocks = 2;
-    sargs->chunk_interval = 100;
+    sargs->timeout = 10000;
     sargs->log_level = LOG_LEVEL_INFO;
     strncpy(sargs->log_filename, "/var/log/httpd_mock.log", FHTTP_MAX_LOG_FILENAME_SIZE);
 
@@ -81,6 +85,19 @@ void read_config(const char* filename, service_arg_t* sargs)
             sargs->max_queue_len = atoi(value);
         } else if ( strcmp(key, "workers") == 0 ) {
             sargs->workers = atoi(value);
+        } else if ( strcmp(key, "response_type") == 0 ) {
+            if ( strcasecmp(value, "CONTENT") == 0 ) {
+                sargs->response_type = RESP_TYPE_CONTENT;
+            } else if ( strcasecmp(value, "CHUNKED") == 0 ) {
+                sargs->response_type = RESP_TYPE_CHUNKED;
+            } else if ( strcasecmp(value, "MIX") == 0 ) {
+                sargs->response_type = RESP_TYPE_MIX;
+            } else {
+                printf("not found any correct reponse type\n");
+                exit(1);
+            }
+        } else if ( strcmp(key, "chunk_ratio") == 0 ) {
+            sargs->chunk_ratio = atoi(value);
         } else if ( strcmp(key, "min_latency") == 0 ) {
             sargs->min_latency = atoi(value);
         } else if ( strcmp(key, "max_latency") == 0 ) {
@@ -89,14 +106,18 @@ void read_config(const char* filename, service_arg_t* sargs)
             sargs->min_response_size = atoi(value);
         } else if ( strcmp(key, "max_response_size") == 0 ) {
             sargs->max_response_size = atoi(value);
-        } else if ( strcmp(key, "always_chunked") == 0 ) {
-            sargs->always_chunked = atoi(value);
-        } else if ( strcmp(key, "timeout") == 0 ) {
-            sargs->timeout = atoi(value);
+        } else if ( strcmp(key, "min_chunk_latency") == 0 ) {
+            sargs->min_chunk_latency = atoi(value);
+        } else if ( strcmp(key, "max_chunk_latency") == 0 ) {
+            sargs->max_chunk_latency = atoi(value);
+        } else if ( strcmp(key, "min_chunk_response_size") == 0 ) {
+            sargs->min_chunk_response_size = atoi(value);
+        } else if ( strcmp(key, "max_chunk_response_size") == 0 ) {
+            sargs->max_chunk_response_size = atoi(value);
         } else if ( strcmp(key, "chunk_blocks") == 0 ) {
             sargs->chunk_blocks = atoi(value);
-        } else if ( strcmp(key, "chunk_interval") == 0 ) {
-            sargs->chunk_interval = atoi(value);
+        } else if ( strcmp(key, "timeout") == 0 ) {
+            sargs->timeout = atoi(value);
         } else if ( strcmp(key, "log_level") == 0 ) {
             if ( strcmp(value, "TRACE") == 0 ) {
                 sargs->log_level = LOG_LEVEL_TRACE;
@@ -110,6 +131,9 @@ void read_config(const char* filename, service_arg_t* sargs)
                 sargs->log_level = LOG_LEVEL_ERROR;
             } else if ( strcmp(value, "FATAL") == 0 ) {
                 sargs->log_level = LOG_LEVEL_FATAL;
+            } else {
+                printf("not found any correct log level\n");
+                exit(1);
             }
         } else if ( strcmp(key, "log_filename") == 0 ) {
             strncpy(sargs->log_filename, value, FHTTP_MAX_LOG_FILENAME_SIZE);
@@ -150,8 +174,19 @@ int checkServiceArgs(service_arg_t* sargs)
         exit(1);
     }
 
+    if ( (sargs->response_type == RESP_TYPE_MIX) &&
+         (sargs->chunk_ratio < 0 || sargs->chunk_ratio > 100) ) {
+        printf("chunk_ratio must in [0-100]\n");
+        exit(1);
+    }
+
     if ( sargs->min_latency < 0 || sargs->max_latency < 0 ) {
         printf("latency must >= 0\n");
+        exit(1);
+    }
+
+    if ( sargs->min_latency > sargs->max_latency ) {
+        printf("min latency must < max latency\n");
         exit(1);
     }
 
@@ -159,6 +194,32 @@ int checkServiceArgs(service_arg_t* sargs)
         printf("response size must >= 0\n");
         exit(1);
     }
+
+    if ( sargs->min_response_size > sargs->max_response_size ) {
+        printf("min response size must > max response size\n");
+        exit(1);
+    }
+
+    if ( sargs->min_chunk_latency < 0 || sargs->max_chunk_latency < 0 ) {
+        printf("chunk latency must >= 0\n");
+        exit(1);
+    }
+
+    if ( sargs->min_chunk_latency > sargs->max_chunk_latency ) {
+        printf("min chunk latency must < max chunk latency\n");
+        exit(1);
+    }
+
+    if ( sargs->min_chunk_response_size < 0 || sargs->max_chunk_response_size < 0 ) {
+        printf("chunk response size must >= 0\n");
+        exit(1);
+    }
+
+    if ( sargs->min_chunk_response_size > sargs->max_chunk_response_size ) {
+        printf("min chunk response size must > max chunk response size\n");
+        exit(1);
+    }
+
 
     if ( sargs->chunk_blocks <= 0 ) {
         printf("chunk blocks must > 0\n");
@@ -174,13 +235,17 @@ int checkServiceArgs(service_arg_t* sargs)
     printf("  \\_ listen_port : %d\n", sargs->port);
     printf("  \\_ workers : %d\n", sargs->workers);
     printf("  \\_ max_connection : %d\n", sargs->max_queue_len);
+    printf("  \\_ response type : %d\n", sargs->response_type);
+    printf("  \\_ chunk ratio : %d\n", sargs->chunk_ratio);
     printf("  \\_ min_latency : %d\n", sargs->min_latency);
     printf("  \\_ max_latency : %d\n", sargs->max_latency);
     printf("  \\_ min_response_size : %d\n", sargs->min_response_size);
     printf("  \\_ max_response_size : %d\n", sargs->max_response_size);
-    printf("  \\_ always_chunked : %d\n", sargs->always_chunked);
+    printf("  \\_ min_chunk_latency : %d\n", sargs->min_chunk_latency);
+    printf("  \\_ max_chunk_latency : %d\n", sargs->max_chunk_latency);
+    printf("  \\_ min_chunk_response_size : %d\n", sargs->min_chunk_response_size);
+    printf("  \\_ max_chunk_response_size : %d\n", sargs->max_chunk_response_size);
     printf("  \\_ chunk_blocks : %d\n", sargs->chunk_blocks);
-    printf("  \\_ chunk_interval : %d\n", sargs->chunk_interval);
     printf("  \\_ timeout : %d\n", sargs->timeout);
     printf("  \\_ log_level : %d\n", sargs->log_level);
     printf("  \\_ log_filename : %s\n", sargs->log_filename);
@@ -225,13 +290,17 @@ void dump_config(service_arg_t* sargs)
     FLOG_INFO(glog, "  \\_ listen_port : %d", sargs->port);
     FLOG_INFO(glog, "  \\_ workers : %d", sargs->workers);
     FLOG_INFO(glog, "  \\_ max_connection : %d", sargs->max_queue_len);
+    FLOG_INFO(glog, "  \\_ response type : %d\n", sargs->response_type);
+    FLOG_INFO(glog, "  \\_ chunk ratio : %d\n", sargs->chunk_ratio);
     FLOG_INFO(glog, "  \\_ min_latency : %d", sargs->min_latency);
     FLOG_INFO(glog, "  \\_ max_latency : %d", sargs->max_latency);
     FLOG_INFO(glog, "  \\_ min_response_size : %d", sargs->min_response_size);
     FLOG_INFO(glog, "  \\_ max_response_size : %d", sargs->max_response_size);
-    FLOG_INFO(glog, "  \\_ always_chunked : %d", sargs->always_chunked);
+    FLOG_INFO(glog, "  \\_ min_chunk_latency : %d\n", sargs->min_chunk_latency);
+    FLOG_INFO(glog, "  \\_ max_chunk_latency : %d\n", sargs->max_chunk_latency);
+    FLOG_INFO(glog, "  \\_ min_chunk_response_size : %d\n", sargs->min_chunk_response_size);
+    FLOG_INFO(glog, "  \\_ max_chunk_response_size : %d\n", sargs->max_chunk_response_size);
     FLOG_INFO(glog, "  \\_ chunk_blocks : %d", sargs->chunk_blocks);
-    FLOG_INFO(glog, "  \\_ chunk_interval : %d", sargs->chunk_interval);
     FLOG_INFO(glog, "  \\_ timeout : %d", sargs->timeout);
     FLOG_INFO(glog, "  \\_ log_level : %d", sargs->log_level);
     FLOG_INFO(glog, "  \\_ log_filename : %s", sargs->log_filename);

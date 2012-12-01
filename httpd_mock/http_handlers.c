@@ -246,6 +246,24 @@ int gen_random_response_size(int min, int max)
 }
 
 static
+int get_ischunked(resp_type_t response_type, int chunk_ratio)
+{
+    if ( response_type == RESP_TYPE_CONTENT ) {
+        return 0;
+    } else if ( response_type == RESP_TYPE_CHUNKED ) {
+        return 1;
+    } else {
+        if ( chunk_ratio == 0 ) {
+            return 0;
+        } else if ( chunk_ratio == 100 ) {
+            return 1;
+        } else {
+            return (rand() % 100) < chunk_ratio;
+        }
+    }
+}
+
+static
 int gen_random_latency(int min, int max)
 {
     return gen_number_in_range(min, max);
@@ -315,8 +333,8 @@ int set_chunked_status(client* cli)
 
     client_mgr* mgr = cli->owner;
     // 1. generate response body
-    int response_size = gen_random_response_size(mgr->sargs->min_response_size,
-                                                 mgr->sargs->max_response_size);
+    int response_size = gen_random_response_size(mgr->sargs->min_chunk_response_size,
+                                                 mgr->sargs->max_chunk_response_size);
     cli->last_data_size = response_size;
     cli->chunk_size = response_size / mgr->sargs->chunk_blocks;
     // fix zero chunk size issue
@@ -436,66 +454,81 @@ void http_read(fev_state* fev, fev_buff* evbuff, void* arg)
     }
 
     // we have data need to process
-    if ( bytes > 0 ) {
-        char* read_buf = fevbuff_rawget(evbuff);
-        int offset = cli->offset;
+    char* read_buf = fevbuff_rawget(evbuff);
+    int offset = cli->offset;
 
-        while ( offset < bytes-2 ) {
-            if ((read_buf[offset] == read_buf[offset+2] &&
-                 read_buf[offset] == '\n') ) {
-                // head parser complete, send response
-                cli->request_complete++;
-
-                // check k-a valid
-                if ( (cli->request_complete - 1) != cli->response_complete ) {
-                    destroy_client(cli);
-                    FLOG_ERROR(glog, "not follow keep-alive rules, check client side");
-                    return;
-                }
-
-                // set chunk status if client need chunked response
-                if ( cli->ischunked ) {
-                    set_chunked_status(cli);
-                }
-
-                // create timer node
-                get_cur_time(&cli->last_active);
-                int latency = gen_random_latency(cli->owner->sargs->min_latency,
-                                                 cli->owner->sargs->max_latency);
-                int interval = 0;
-                if ( latency ) {
-                    interval = latency;
-                } else { // latency == 0, send out directly
-                    interval = cli->owner->sargs->timeout;
-                    int ret = -1;
-                    if (!cli->ischunked) {
-                        ret = send_http_response(cli);
-                    } else {
-                        ret = send_http_chunked_response(cli);
-                    }
-
-                    if ( ret < 0 ) {
-                        // something goes wrong, client has been destroyed
-                        FLOG_DEBUG(glog, "buffer cannot write, fd=%d", fd);
-                        return;
-                    }
-                }
-
-                timer_node* tnode = timer_node_create(cli, interval);
-                timer_node_push(cli->owner->current, tnode);
-
-                // pop last consumed data
-                fevbuff_pop(evbuff, offset+2);
-                // reset offset for next request
-                cli->offset = 0;
-                return;
-            }
-
-            offset++;
+    // try to found one request
+    int isfound = 0;
+    while ( offset < bytes-2 ) {
+        if ((read_buf[offset] == read_buf[offset+2] &&
+             read_buf[offset] == '\n') ) {
+            // we found a request
+            isfound = 1;
+            break;
         }
-
-        cli->offset = offset;
+        offset++;
     }
+
+    if ( !isfound ) {
+        cli->offset = offset;
+        return;
+    }
+
+    // header parser complete
+    cli->request_complete++;
+
+    // check k-a valid
+    if ( (cli->request_complete - 1) != cli->response_complete ) {
+        destroy_client(cli);
+        FLOG_ERROR(glog, "not follow keep-alive rules, check client side");
+        return;
+    }
+
+    // mark active
+    get_cur_time(&cli->last_active);
+
+    // to decide this response whether is chunked
+    cli->ischunked = get_ischunked(cli->owner->sargs->response_type,
+                                    cli->owner->sargs->chunk_ratio);
+
+    int interval = 0, ret = 0;
+    if ( !cli->ischunked ) {
+        int latency = gen_random_latency(cli->owner->sargs->min_latency,
+                                     cli->owner->sargs->max_latency);
+        if ( latency ) {
+            interval = latency;
+        } else {
+            interval = cli->owner->sargs->timeout;
+            ret = send_http_response(cli);
+        }
+    } else {
+        // set chunk status if client need chunked response
+        set_chunked_status(cli);
+
+        int latency = gen_random_latency(cli->owner->sargs->min_chunk_latency,
+                                     cli->owner->sargs->max_chunk_latency);
+        if ( latency ) {
+            interval = latency;
+        } else {
+            interval = cli->owner->sargs->timeout;
+            ret = send_http_chunked_response(cli);
+        }
+    }
+
+    if ( ret < 0 ) {
+        // something goes wrong, client has been destroyed
+        FLOG_DEBUG(glog, "buffer cannot write, fd=%d", fd);
+        return;
+    }
+
+    // create timer node
+    timer_node* tnode = timer_node_create(cli, interval);
+    timer_node_push(cli->owner->current, tnode);
+
+    // pop last consumed data
+    fevbuff_pop(evbuff, offset+2);
+    // reset offset for next request
+    cli->offset = 0;
 }
 
 static
@@ -523,7 +556,7 @@ void http_accept(fev_state* fev, int fd, void* ud)
         cli->evbuff = evbuff;
         cli->owner = mgr;
         cli->owner->current_conn++;
-        cli->ischunked = mgr->sargs->always_chunked;
+        cli->ischunked = 0;
         FLOG_DEBUG(glog, "fev_buff created fd=%d", fd);
     } else {
         FLOG_ERROR(glog, "cannot create evbuff fd=%d", fd);
