@@ -1,0 +1,8 @@
+global i;
+probe kernel.function("sys_accept") {
+if (execname() != "test") next;
+    print_backtrace();
+    println("===");
+if (i++>2) exit();
+}
+
