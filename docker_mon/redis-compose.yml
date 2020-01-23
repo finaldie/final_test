@@ -8,7 +8,7 @@ services:
     ports: [6379:6379]
 
   web:
-    image: composetest_web
+    image: redis_test
     container_name: web
     depends_on:
       - redis
