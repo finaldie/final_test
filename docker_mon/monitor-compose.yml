@@ -13,10 +13,6 @@ services:
       - 9090
     ports:
       - 9090:9090
-    links:
-      - cadvisor:cadvisor
-      - node-exporter:node-exporter
-      - redis-exporter:redis-exporter
     depends_on:
       - cadvisor
       - node-exporter
@@ -50,9 +46,7 @@ services:
     container_name: redis-exporter
     restart: unless-stopped
     environment:
-      - REDIS_ADDR=redis://docker.for.mac.host.internal:6379
-    links:
-      - redis:redis
+      - REDIS_ADDR=redis:6379
     expose: [9121]
     ports: [9121:9121]
 
@@ -62,10 +56,6 @@ services:
     restart: unless-stopped
     depends_on:
       - prometheus
-    links:
-      - prometheus:prometheus
-    volumes:
-      - ./data/grafana:/var/lib/grafana
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
