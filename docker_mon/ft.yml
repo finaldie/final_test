@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  redis-bench:
+    image: "redis:alpine"
+    container_name: redis-bench
+    depends_on:
+      - redis
+    command: >
+      /bin/sh -c "
+        echo sleeping...;
+        sleep 20;
+        redis-benchmark -h redis;
+      "
