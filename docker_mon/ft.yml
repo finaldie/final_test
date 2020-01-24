@@ -8,7 +8,10 @@ services:
       - redis
     command: >
       /bin/sh -c "
-        echo sleeping...;
-        sleep 20;
+        while ! nc -z redis 6379; do
+          echo redis is not healthy yet...;
+          sleep 1;
+        done;
+        echo redis is up;
         redis-benchmark -h redis;
       "
