@@ -9,14 +9,15 @@ import yaml
 import subprocess
 import re
 import collections
+import datetime
 
 def processTodo(filename):
 
     try:
         f = open(filename, "r")
 
-        data = getValidData(f)
-        show(data)
+        today, older, later = getValidData(f)
+        show(today, older, later)
 
         f.close()
     except Exception as e:
@@ -24,36 +25,65 @@ def processTodo(filename):
         raise
 
 
-# Only process recent 100 records
 def getValidData(f):
+    """
+    Only process recent 100 records:
+     - For todo list, only collect today's items
+     - For overdue, it will consider all items older than today in the records
+    """
+
+    RECORDS = 100
     res = ""
     lineNo = 1
 
-    data = collections.defaultdict(list)
+    today = collections.defaultdict(list)
+    later = collections.defaultdict(list)
+    older = collections.defaultdict(list)
+    td = datetime.date.today()
+    data = None
 
-    for i in range(100):
+    for i in range(RECORDS):
         line = f.readline()
         if not line:
             break
 
-        ok = re.match("^todo:", line)
-        if ok is not None:
-            data['todo'].append(line)
+        line = line.strip()
+        ok = re.match("^date:", line)
+        if ok:
+            dtStr = line[5:].strip('\n').strip(' ')
+            dt = datetime.date.fromisoformat(dtStr)
 
-        ok = re.match("^done:", line)
-        if ok is not None:
-            data['done'].append(line)
+            if dt == td:
+                data = today
+            elif dt > td:
+                data = later
+            else:
+                data = older
+        else:
+            ok = re.match("^\- todo:", line)
+            if ok is not None:
+                data['todo'].append(line)
 
-    return data
+            ok = re.match("^\- done:", line)
+            if ok is not None:
+                data['done'].append(line)
 
-def show(data):
-    todo = len(data['todo'])
-    done = len(data['done'])
+    return today, older, later
+
+def show(today, older, later):
+    todo = len(today['todo'])
+    done = len(today['done'])
     total = todo + done
 
-    res = "{}/{}: ".format(done, total)
-    res += putInto1Line(data['todo'])
-    res += putInto1Line(data['done'], True)
+    overdue = len(older['todo'])
+
+    res = "{}/{} overdue({})".format(done, total, overdue)
+    if total == 0:
+        return
+
+    res += ": "
+    res += putInto1Line(today['todo'])
+    res += putInto1Line(today['done'], True)
 
     print(res)
 
@@ -62,7 +92,7 @@ def putInto1Line(data, strike = False):
     id = 1
 
     for content in data:
-        content = content[5:].strip('\n').strip(' ')
+        content = content[7:].strip('\n').strip(' ')
 
         content = "({}) {}".format(id, content)
         id += 1
