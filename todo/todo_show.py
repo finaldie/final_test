@@ -17,7 +17,8 @@ def processTodo(filename):
         f = open(filename, "r")
 
         today, older, later = getValidData(f)
-        show(today, older, later)
+        res = show(today, older, later)
+        print(res)
 
         f.close()
     except Exception as e:
@@ -79,13 +80,13 @@ def show(today, older, later):
 
     res = "{}/{} overdue({})".format(done, total, overdue)
     if total == 0:
-        return
+        return res
 
     res += ": "
     res += putInto1Line(today['todo'])
     res += putInto1Line(today['done'], True)
 
-    print(res)
+    return res
 
 def putInto1Line(data, strike = False):
     res = ""
