@@ -1,0 +1,6 @@
+Entry Point:
+```
+docker-compose -f redis-compose.yml -f monitor-compose.yml -f ft.yml up
+```
+
+Then go to browser, open `http://localhost:3000`
