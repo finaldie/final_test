@@ -78,7 +78,11 @@ def show(today, older, later):
 
     overdue = len(older['todo'])
 
-    res = "{}/{} overdue({})".format(done, total, overdue)
+    res = "{}/{}".format(done, total)
+
+    if overdue > 0:
+      res += " overdue({})".format(overdue)
+
     if total == 0:
         return res
 
